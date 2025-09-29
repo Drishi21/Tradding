@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card p-4 mb-4">
+  <h4>📅 Daily P&L History</h4>
+  <canvas id="pnlChart" height="120"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  async function loadPnLChart() {
+    const response = await fetch("{% url 'pnl_history' %}");
+    const data = await response.json();
+    const labels = data.map(d => d.date);
+    const values = data.map(d => d.pnl);
+    new Chart(document.getElementById("pnlChart"), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: "Daily P&L (₹)",
+          data: values,
+          borderColor: values.map(v => v >= 0 ? "green" : "red"),
+          pointBackgroundColor: values.map(v => v >= 0 ? "green" : "red"),
+          borderWidth: 2, tension: 0.3, fill: false
+        }]
+      },
+      options: { responsive: true, plugins: { legend: { display: false } } }
+    });
+  }
+  loadPnLChart();
+</script>
+{% endblock %}

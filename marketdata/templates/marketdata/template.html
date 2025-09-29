@@ -1,0 +1,108 @@
+<style>
+#aiModal {
+  display: block; /* always visible for dashboard */
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(145deg, #f0f0f0, #e0e0e0);
+  padding: 25px 35px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  width: 350px;
+  text-align: center;
+  z-index: 1000;
+}
+#aiModal h2 { margin-bottom: 10px; font-size: 20px; }
+#aiModal p { margin: 5px 0; font-size: 16px; }
+#confidenceBar {
+  width: 100%; height: 15px;
+  background: #ddd; border-radius: 8px;
+  overflow: hidden; margin: 8px 0;
+}
+#confidenceFill {
+  height: 100%; width: 0%;
+  background: linear-gradient(to right, #4caf50, #81c784);
+  transition: width 0.5s ease;
+}
+#loading { display:none; margin-top:10px; font-style: italic; }
+#symbolInput { width: 100px; padding: 5px; margin-right: 10px; }
+#refreshText { font-size: 14px; color: #555; margin-top: 5px; }
+</style>
+
+<div style="text-align:center; margin-bottom:10px;">
+  <input type="text" id="symbolInput" placeholder="Symbol (e.g. NSEI)" value="NSEI">
+  <button id="aiBtn">Fetch AI Signal 🤖</button>
+  <div id="loading">Loading...</div>
+  <div id="refreshText">Last updated: --</div>
+</div>
+
+<!-- Modal Dashboard -->
+<div id="aiModal">
+  <h2 id="trend">Trend: --</h2>
+  <p id="confidenceText">Confidence: --</p>
+  <div id="confidenceBar"><div id="confidenceFill"></div></div>
+  <p id="patterns">Patterns: --</p>
+</div>
+
+<script>
+const trendEl = document.getElementById("trend");
+const confidenceText = document.getElementById("confidenceText");
+const confidenceFill = document.getElementById("confidenceFill");
+const patternsEl = document.getElementById("patterns");
+const loading = document.getElementById("loading");
+const symbolInput = document.getElementById("symbolInput");
+const refreshText = document.getElementById("refreshText");
+
+async function fetchAISignal(symbol) {
+    loading.style.display = "block";
+    try {
+        const res = await fetch(`/marketdata/api/predict/${symbol}/`);
+        const data = await res.json();
+        loading.style.display = "none";
+
+        if(data.error){
+            alert(data.error);
+            return;
+        }
+
+        // Trend
+        trendEl.textContent = `Trend: ${data.trend}`;
+        trendEl.style.color = data.trend.includes("Bullish") ? "green" : "red";
+
+        // Confidence
+        const confNum = parseFloat(data.confidence);
+        confidenceText.textContent = `Confidence: ${data.confidence}`;
+        confidenceFill.style.width = confNum + "%";
+        confidenceFill.style.background = data.trend.includes("Bullish") 
+            ? "linear-gradient(to right, #4caf50, #81c784)"
+            : "linear-gradient(to right, #f44336, #e57373)";
+
+        // Patterns
+        patternsEl.textContent = `Patterns: ${data.patterns.join(", ")}`;
+
+        // Last updated
+        const now = new Date();
+        refreshText.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+
+    } catch(err){
+        loading.style.display = "none";
+        alert("Failed: " + err.message);
+    }
+}
+
+// Manual button fetch
+document.getElementById("aiBtn").addEventListener("click", () => {
+    const symbol = symbolInput.value.trim().toUpperCase();
+    if(!symbol) { alert("Enter a symbol"); return; }
+    fetchAISignal(symbol);
+});
+
+// Auto-refresh every 30 seconds
+setInterval(() => {
+    const symbol = symbolInput.value.trim().toUpperCase();
+    if(symbol) fetchAISignal(symbol);
+}, 30000); // 30000 ms = 30 sec
+
+// Initial load
+fetchAISignal(symbolInput.value.trim().toUpperCase());
+</script>

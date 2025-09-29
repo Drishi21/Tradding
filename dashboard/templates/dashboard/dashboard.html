@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Trading Assistant Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Scrolling ticker animations */
+    @keyframes ticker-left {
+      0%   { transform: translateX(100%); }
+      100% { transform: translateX(-100%); }
+    }
+    @keyframes ticker-right {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    .ticker {
+      display: inline-block;
+      padding-right: 100%;
+      animation-duration: 20s;
+      animation-timing-function: linear;
+      animation-iteration-count: infinite;
+    }
+    .ticker:hover { animation-play-state: paused; }
+    .ticker-left { animation-name: ticker-left; }
+    .ticker-right { animation-name: ticker-right; }
+  </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+  <!-- 🔴 Live Scrolling Ticker -->
+  <div class="bg-black overflow-hidden whitespace-nowrap">
+    <div id="ticker-bar" class="ticker ticker-left text-sm py-2 px-4">
+      <span class="text-gray-400">Loading live data...</span>
+    </div>
+  </div>
+
+  <!-- 🔵 Navbar -->
+  <header class="bg-white shadow-lg sticky top-0 z-50">
+    <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+      <h1 class="text-indigo-700 text-2xl font-extrabold flex items-center space-x-2">
+        📊 <span>Trading Assistant</span>
+      </h1>
+      <nav class="hidden md:flex space-x-6 font-medium">
+        <a href="/" class="hover:text-indigo-600">Home</a>
+        <a href="/marketdata/" class="hover:text-indigo-600">Market Data</a>
+        <a href="/marketdata/fii-dii/" class="hover:text-indigo-600">FII/DII</a>
+        <a href="/marketdata/option-chain/" class="hover:text-indigo-600">Option Chain</a>
+        <a href="/marketdata/news/" class="hover:text-indigo-600">News</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- 🟣 Hero Section -->
+  <section class="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white py-24">
+    <div class="container mx-auto px-6 text-center">
+      <h2 class="text-5xl font-extrabold mb-6 drop-shadow-lg">🚀 Welcome to Your Market Dashboard</h2>
+      <p class="text-lg opacity-90 mb-10">Stay ahead with real-time insights on NIFTY, FII/DII, Option Chains, and the latest market news.</p>
+      <a href="/marketdata/" class="bg-yellow-400 text-indigo-900 px-8 py-4 rounded-full font-bold hover:bg-yellow-300 transition shadow-lg">
+        Explore Market Data
+      </a>
+    </div>
+  </section>
+
+  <!-- 🟢 Dashboard Cards -->
+  <section class="py-20 container mx-auto px-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
+
+    <a href="/marketdata/" class="card bg-white rounded-2xl shadow-lg p-8 text-center transition transform hover:-translate-y-2 hover:shadow-2xl">
+      <div class="text-indigo-600 text-6xl mb-4">📊</div>
+      <h3 class="text-2xl font-bold mb-3">Market Data</h3>
+      <p class="text-gray-600">Track daily NIFTY records, trends, and in-depth analysis.</p>
+    </a>
+
+    <a href="/marketdata/fii-dii/" class="card bg-white rounded-2xl shadow-lg p-8 text-center transition transform hover:-translate-y-2 hover:shadow-2xl">
+      <div class="text-green-600 text-6xl mb-4">💸</div>
+      <h3 class="text-2xl font-bold mb-3">FII / DII</h3>
+      <p class="text-gray-600">Understand investor moves with foreign & domestic fund data.</p>
+    </a>
+
+    <a href="/marketdata/option-chain/" class="card bg-white rounded-2xl shadow-lg p-8 text-center transition transform hover:-translate-y-2 hover:shadow-2xl">
+      <div class="text-red-600 text-6xl mb-4">📈</div>
+      <h3 class="text-2xl font-bold mb-3">Option Chain</h3>
+      <p class="text-gray-600">Check PCR ratios & detailed option chain analysis for NIFTY.</p>
+    </a>
+
+    <a href="/marketdata/news/" class="card bg-white rounded-2xl shadow-lg p-8 text-center transition transform hover:-translate-y-2 hover:shadow-2xl">
+      <div class="text-yellow-600 text-6xl mb-4">📰</div>
+      <h3 class="text-2xl font-bold mb-3">Market News</h3>
+      <p class="text-gray-600">Stay updated with curated stock market news & insights.</p>
+    </a>
+
+  </section>
+
+  <!-- 🟡 Footer -->
+  <footer class="bg-indigo-700 text-white py-8 text-center">
+    <p class="mb-2">© 2025 Trading Assistant. Built with ❤️ for smarter investing.</p>
+    <p class="text-sm opacity-80">Powered by Django & Groww API</p>
+  </footer>
+
+  <!-- 🟠 Ticker JavaScript -->
+  <script>
+  function getColor(changeText) {
+    if (changeText.includes('-')) return "text-red-400";
+    if (changeText.includes('+')) return "text-green-400";
+    return "text-gray-300";
+  }
+
+  function getArrow(changeText) {
+    if (changeText.includes('-')) return "🔽";
+    if (changeText.includes('+')) return "🔼";
+    return "➖";
+  }
+
+  async function fetchTicker() {
+    try {
+      const response = await fetch("/marketdata/ticker/");
+      const data = await response.json();
+
+      if (data.error) {
+        document.getElementById("ticker-bar").innerHTML =
+          "<span class='text-red-400'>⚠ Error loading ticker</span>";
+        return;
+      }
+
+      // Build ticker content with arrows
+      let html = `
+        <span class="${getColor(data.nifty.change)} mr-12">📈 NIFTY 50: ${data.nifty.value} (${data.nifty.change}) ${getArrow(data.nifty.change)}</span>
+        <span class="${getColor(data.sensex.change)} mr-12">📉 SENSEX: ${data.sensex.value} (${data.sensex.change}) ${getArrow(data.sensex.change)}</span>
+        <span class="${getColor(data.usd_inr.change)} mr-12">💵 USD/INR: ${data.usd_inr.value} (${data.usd_inr.change}) ${getArrow(data.usd_inr.change)}</span>
+        <span class="${getColor(data.crude.change)} mr-12">🛢 Crude Oil: $${data.crude.value} (${data.crude.change}) ${getArrow(data.crude.change)}</span>
+      `;
+
+      let tickerBar = document.getElementById("ticker-bar");
+      tickerBar.innerHTML = html;
+
+      // Set scroll direction based on NIFTY
+      if (data.nifty.change.includes('-')) {
+        tickerBar.classList.remove("ticker-left");
+        tickerBar.classList.add("ticker-right");
+      } else {
+        tickerBar.classList.remove("ticker-right");
+        tickerBar.classList.add("ticker-left");
+      }
+
+    } catch (err) {
+      document.getElementById("ticker-bar").innerHTML =
+        "<span class='text-red-400'>⚠ Network error</span>";
+    }
+  }
+
+  // Fetch every 10 seconds
+  fetchTicker();
+  setInterval(fetchTicker, 10000);
+  </script>
+
+</body>
+</html>

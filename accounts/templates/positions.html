@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card p-4 mb-4 bg-light shadow-sm">
+  <div class="row text-center">
+    <div class="col-md-6">
+      <h5>Total Value</h5><h3 id="totalValue">0</h3>
+    </div>
+    <div class="col-md-6">
+      <h5>Total P&L</h5><h3 id="totalPnL"><span class="badge bg-secondary">0</span></h3>
+    </div>
+  </div>
+</div>
+
+<div class="card p-4 mb-4">
+  <h4>📊 Equity Holdings (Live)</h4>
+  <table class="table table-bordered text-center" id="holdingsTable">
+    <thead class="table-light"><tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Value</th><th>P&L</th></tr></thead>
+    <tbody>
+      {% for h in holdings %}
+      <tr data-symbol="{{ h.symbol }}">
+        <td>{{ h.symbol }}</td>
+        <td class="qty">{{ h.quantity }}</td>
+        <td class="avg">{{ h.avgPrice }}</td>
+        <td class="ltp">{{ h.ltp }}</td>
+        <td class="value">{{ h.ltp }}</td>
+        <td class="pnl">-</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card p-4">
+  <h4>📈 F&O / Intraday Positions (Live)</h4>
+  <table class="table table-bordered text-center" id="positionsTable">
+    <thead class="table-light"><tr><th>Symbol</th><th>Qty</th><th>Buy Avg</th><th>LTP</th><th>MTM</th></tr></thead>
+    <tbody>
+      {% for p in positions %}
+      <tr data-symbol="{{ p.symbol }}">
+        <td>{{ p.symbol }}</td>
+        <td class="qty">{{ p.quantity }}</td>
+        <td class="avg">{{ p.buyPrice }}</td>
+        <td class="ltp">{{ p.ltp }}</td>
+        <td class="pnl">{{ p.mtm }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+  const ws = new WebSocket("ws://" + window.location.host + "/ws/live-positions/");
+  ws.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+    let totalValue = 0, totalPnL = 0;
+
+    data.holdings.forEach(h => {
+      const row = document.querySelector(`#holdingsTable tr[data-symbol='${h.symbol}']`);
+      if (row) {
+        const qty = parseFloat(row.querySelector(".qty").innerText);
+        const avg = parseFloat(row.querySelector(".avg").innerText);
+        const ltp = parseFloat(h.ltp || 0);
+        const value = ltp * qty, pnl = (ltp - avg) * qty;
+        row.querySelector(".ltp").innerText = ltp.toFixed(2);
+        row.querySelector(".value").innerText = value.toFixed(2);
+        row.querySelector(".pnl").innerHTML =
+          pnl >= 0 ? `<span class="badge bg-success">+${pnl.toFixed(2)}</span>` :
+                      `<span class="badge bg-danger">${pnl.toFixed(2)}</span>`;
+        totalValue += value; totalPnL += pnl;
+      }
+    });
+
+    data.positions.forEach(p => {
+      const row = document.querySelector(`#positionsTable tr[data-symbol='${p.symbol}']`);
+      if (row) {
+        const qty = parseFloat(row.querySelector(".qty").innerText);
+        const avg = parseFloat(row.querySelector(".avg").innerText);
+        const ltp = parseFloat(p.ltp || 0);
+        const pnl = (ltp - avg) * qty;
+        row.querySelector(".ltp").innerText = ltp.toFixed(2);
+        row.querySelector(".pnl").innerHTML =
+          pnl >= 0 ? `<span class="badge bg-success">+${pnl.toFixed(2)}</span>` :
+                      `<span class="badge bg-danger">${pnl.toFixed(2)}</span>`;
+        totalPnL += pnl;
+      }
+    });
+
+    document.getElementById("totalValue").innerText = totalValue.toFixed(2);
+    document.getElementById("totalPnL").innerHTML =
+      totalPnL >= 0 ? `<span class="badge bg-success">+${totalPnL.toFixed(2)}</span>` :
+                      `<span class="badge bg-danger">${totalPnL.toFixed(2)}</span>`;
+  };
+</script>
+{% endblock %}
+    

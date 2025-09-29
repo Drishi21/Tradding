@@ -1,0 +1,31 @@
+<div class="container text-center py-5">
+  <h1>Upgrade Your Plan 🚀</h1>
+  <div class="row">
+    <div class="col-md-4 card p-3">
+      <h3>Free</h3><h2>₹0</h2>
+      <p>Basic charts</p>
+    </div>
+    <div class="col-md-4 card p-3">
+      <h3>Pro</h3><h2>₹999/mo</h2>
+      <p>AI Predictions, Patterns, Backtesting</p>
+      <a href="{% url 'create_stripe_session' 'pro' %}" class="btn btn-primary">Pay with Stripe</a>
+      <button onclick="payRazor('pro')" class="btn btn-success">Pay with Razorpay</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+async function payRazor(plan){
+  const res = await fetch(`/marketdata/razorpay/${plan}/`);
+  const order = await res.json();
+  const options = {
+    "key": "{{ RAZORPAY_KEY }}",
+    "amount": order.amount,
+    "currency": "INR",
+    "order_id": order.id,
+    "handler": function (response){ alert("Payment success!"); }
+  };
+  new Razorpay(options).open();
+}
+</script>

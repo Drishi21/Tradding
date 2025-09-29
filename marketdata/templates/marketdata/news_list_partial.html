@@ -1,0 +1,20 @@
+{% for n in page_obj %}
+  <div class="news-card">
+    <h5><a href="{{ n.link }}" target="_blank">{{ n.title }}</a></h5>
+    <small class="text-muted">
+      {{ n.source }} | {{ n.published_dt|date:"Y-m-d H:i" }} |
+      {% if n.sentiment == "Positive" %}
+        <span class="badge bg-success badge-snippet">Positive</span>
+      {% elif n.sentiment == "Negative" %}
+        <span class="badge bg-danger badge-snippet">Negative</span>
+      {% else %}
+        <span class="badge bg-secondary badge-snippet">Neutral</span>
+      {% endif %}
+    </small>
+    {% if n.content %}
+      <p class="mt-2">{{ n.content|truncatechars:300 }}</p>
+    {% endif %}
+  </div>
+{% empty %}
+  <p>No news available.</p>
+{% endfor %}

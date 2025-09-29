@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card p-4 shadow-sm">
+  <h4>⚡ Place Stop Loss Order</h4>
+  <form method="post" action="{% url 'stop_loss_order' %}">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label>Symbol</label>
+      <input type="text" class="form-control" name="symbol" required>
+    </div>
+    <div class="mb-3">
+      <label>Quantity</label>
+      <input type="number" class="form-control" name="quantity" required>
+    </div>
+    <div class="mb-3">
+      <label>Trigger Price</label>
+      <input type="number" step="0.05" class="form-control" name="triggerPrice" required>
+    </div>
+    <div class="mb-3">
+      <label>Stop Price</label>
+      <input type="number" step="0.05" class="form-control" name="stopPrice" required>
+    </div>
+    <div class="mb-3">
+      <label>Target Price (optional)</label>
+      <input type="number" step="0.05" class="form-control" name="targetPrice">
+    </div>
+    <button type="submit" class="btn btn-danger">🚀 Place Stop Loss</button>
+  </form>
+</div>
+{% endblock %}

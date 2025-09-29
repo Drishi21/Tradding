@@ -1,0 +1,48 @@
+<div class="accordion-header {{ interval }}">
+  {% if interval == "hourly" %}⏰ Hourly Data{% endif %}
+  {% if interval == "m30" %}⏱ 30-Minute Data{% endif %}
+  {% if interval == "m5" %}⏳ 5-Minute Data{% endif %}
+  {% if interval == "m2" %}⌛ 2-Minute Data{% endif %}
+</div>
+
+<table class="{{ interval }}">
+  <thead>
+    <tr>
+      {% if interval == "hourly" %}
+        <th>Hour</th>
+      {% else %}
+        <th>Time</th>
+      {% endif %}
+      <th>Open</th>
+      <th>High</th>
+      <th>Low</th>
+      <th>Close</th>
+      <th>Points</th>
+      <th>Decision</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in data %}
+    <tr>
+      <td>{{ row.hour|time:"H:i" }}</td>
+      <td>{{ row.nifty_open }}</td>
+      <td>{{ row.nifty_high }}</td>
+      <td>{{ row.nifty_low }}</td>
+      <td>{{ row.nifty_close }}</td>
+      <td class="{% if row.points >= 0 %}points-positive{% else %}points-negative{% endif %}">
+        {% if row.points >= 0 %}+{% endif %}{{ row.points }}
+      </td>
+      <td class="{% if row.final_decision == 'Bullish' %}bullish
+                 {% elif row.final_decision == 'Bearish' %}bearish
+                 {% else %}neutral{% endif %}">
+        {% if row.final_decision == 'Bullish' %}📈
+        {% elif row.final_decision == 'Bearish' %}📉
+        {% else %}⚖️{% endif %}
+        {{ row.final_decision }}
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7">No {{ title }} available</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

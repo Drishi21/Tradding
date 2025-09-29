@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card p-4">
+  <h3>📑 Orders</h3>
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Order ID</th>
+        <th>Symbol</th>
+        <th>Status</th>
+        <th>Qty</th>
+        <th>Price</th>
+        <th>Txn Type</th>
+        <th>Segment</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in orders %}
+      <tr>
+        <td>{{ o.groww_order_id }}</td>
+        <td>{{ o.trading_symbol }}</td>
+        <td>{{ o.order_status }}</td>
+        <td>{{ o.quantity }}</td>
+        <td>{{ o.price }}</td>
+        <td>{{ o.transaction_type }}</td>
+        <td>{{ o.segment }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7">No orders yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

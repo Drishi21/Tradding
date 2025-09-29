@@ -1,0 +1,305 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>📈 Market & Economy News Dashboard</title>
+
+<!-- Bootstrap CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+
+<!-- jQuery -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<!-- Bootstrap JS (collapse, etc.) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+    background: linear-gradient(135deg, #e0eafc, #cfdef3);
+    transition: all 0.3s ease;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 0.85rem;
+}
+body.dark-mode { background-color: #121212; color: #f5f5f5; }
+
+.news-card {
+    margin-bottom: 0.8rem;
+    border-left: 4px solid #0d6efd;
+    padding: 0.6rem;
+    background: #fff;
+    border-radius: 0.4rem;
+}
+body.dark-mode .news-card { background: #1e1e1e; border-left: 4px solid #0d6efd; }
+
+.filters, .chart-container { margin-bottom: 1.2rem; }
+
+.chart-container {
+    background: #fff;
+    padding: 0.6rem;
+    border-radius: 0.4rem;
+    box-shadow: 0 0 8px rgba(0,0,0,0.05);
+}
+body.dark-mode .chart-container { background: #1e1e1e; box-shadow: 0 0 10px rgba(0,0,0,0.3); color: #f5f5f5; }
+
+.badge-snippet { font-size: 0.7rem; margin-left: 0.3rem; }
+.pagination { justify-content: center; font-size: 0.8rem; }
+
+/* Collapse headers with arrows */
+.collapse-header {
+    padding: 0.5rem 0.8rem;
+    border-radius: 0.3rem;
+    cursor: pointer;
+    margin-bottom: 0.4rem;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #fff;
+    font-size: 0.9rem;
+    user-select: none;
+}
+.collapse-header.daily { background: linear-gradient(90deg,#FF6B6B,#FFD93D); }
+.collapse-header.sentiment { background: linear-gradient(90deg,#4ECDC4,#556270); }
+.collapse-header.market { background: linear-gradient(90deg,#1E3C72,#2A5298); }
+.collapse-header.summary { background: linear-gradient(90deg,#FFB75E,#ED8F03); }
+
+.collapse-header i {
+    transition: transform 0.3s ease;
+}
+.collapse.show + .collapse-header i { transform: rotate(180deg); }
+
+.collapse-content { padding: 0.5rem 0.8rem; background: #f8f9fa; border-radius: 0.3rem; margin-bottom: 0.8rem; }
+body.dark-mode .collapse-content { background: #2c2c2c; }
+
+.trading-tips .scrollable { max-height: 400px; overflow-y: auto; }
+
+.trading-tips ul { margin-bottom: 0.5rem; }
+</style>
+</head>
+<body class="container py-3">
+
+<h1 class="mb-3 text-primary" style="font-size:1.3rem;">📈 Market & Economy News Dashboard</h1>
+
+<!-- Dark/Light toggle + Language -->
+<div class="d-flex justify-content-between mb-2">
+    <button id="darkModeToggle" class="btn btn-outline-dark btn-sm">🌙 Toggle Dark Mode</button>
+    <form method="post" id="languageForm" action="{% url 'set_language' %}" class="d-flex align-items-center">
+        {% csrf_token %}
+        <select name="language" id="languageSelect" class="form-select form-select-sm me-2">
+            <option value="en" {% if request.session.language == 'en' %}selected{% endif %}>English</option>
+            <option value="te" {% if request.session.language == 'te' %}selected{% endif %}>Telugu</option>
+            <option value="hi" {% if request.session.language == 'hi' %}selected{% endif %}>Hindi</option>
+            <option value="ta" {% if request.session.language == 'ta' %}selected{% endif %}>Tamil</option>
+            <option value="kn" {% if request.session.language == 'kn' %}selected{% endif %}>Kannada</option>
+            <option value="ml" {% if request.session.language == 'ml' %}selected{% endif %}>Malayalam</option>
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm">Translate</button>
+    </form>
+</div>
+
+<!-- Filters -->
+<form id="filtersForm" method="get" class="row g-2 align-items-end filters">
+    <div class="col-6 col-md-2"><input type="date" name="date" value="{{ date_filter }}" class="form-control form-control-sm"></div>
+    <div class="col-6 col-md-2">
+        <select name="sentiment" class="form-select form-select-sm">
+            <option value="">All Sentiments</option>
+            <option value="Positive" {% if sentiment_filter == 'Positive' %}selected{% endif %}>Positive ({{ positive_count }})</option>
+            <option value="Negative" {% if sentiment_filter == 'Negative' %}selected{% endif %}>Negative ({{ negative_count }})</option>
+            <option value="Neutral" {% if sentiment_filter == 'Neutral' %}selected{% endif %}>Neutral ({{ neutral_count }} )</option>
+        </select>
+    </div>
+    <div class="col-6 col-md-2"><input type="text" name="source" value="{{ source_filter }}" class="form-control form-control-sm" placeholder="Source"></div>
+    <div class="col-6 col-md-2"><input type="text" name="keyword" value="{{ keyword }}" class="form-control form-control-sm" placeholder="Keyword"></div>
+    <div class="col-6 col-md-2">
+        <select name="interval" class="form-select form-select-sm">
+            <option value="1" {% if interval == '1' %}selected{% endif %}>1 Day</option>
+            <option value="7" {% if interval == '7' %}selected{% endif %}>7 Days</option>
+            <option value="15" {% if interval == '15' %}selected{% endif %}>15 Days</option>
+            <option value="30" {% if interval == '30' %}selected{% endif %}>1 Month</option>
+            <option value="90" {% if interval == '90' %}selected{% endif %}>3 Months</option>
+            <option value="180" {% if interval == '180' or not interval %}selected{% endif %}>6 Months</option>
+            <option value="365" {% if interval == '365' %}selected{% endif %}>1 Year</option>
+        </select>
+    </div>
+    <div class="col-6 col-md-1"><button type="submit" class="btn btn-success btn-sm w-100">🔍 Apply</button></div>
+    <div class="col-6 col-md-1"><button type="button" id="resetBtn" class="btn btn-secondary btn-sm w-100">♻ Reset</button></div>
+</form>
+
+<!-- Update News -->
+<form id="updateNewsForm" method="post" action="{% url 'update_news' %}" class="mb-3">
+    {% csrf_token %}
+    <input type="hidden" name="interval" value="{{ interval }}">
+    <button type="submit" class="btn btn-primary btn-sm w-100">🔄 Update News</button>
+</form>
+
+<!-- Daily Trading Notes & Tips -->
+<div class="trading-tips mb-4">
+    <h4 class="mb-2">📘 Daily Trading Notes & Tips</h4>
+    <div class="scrollable">
+        <div class="collapse-header daily" data-bs-toggle="collapse" data-bs-target="#dailyNotes">
+            Show / Hide Notes <i class="bi bi-chevron-down"></i>
+        </div>
+        <div id="dailyNotes" class="collapse show">
+            <ul>
+                <li>📌 మార్కెట్‌లో ఎక్కువకాలం నిలబడటం ముఖ్యం. లాభం తరువాత వస్తుంది.</li>
+                <li>📌 నష్టాన్ని ముందే నియంత్రించడం ద్వారా ఎక్కువ రోజులు ట్రేడింగ్ చేయవచ్చు.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Collapsible Sentiment Chart -->
+<div class="chart-container mb-3">
+    <div class="collapse-header sentiment" data-bs-toggle="collapse" data-bs-target="#sentimentCollapse">
+        📊 Sentiment Distribution <i class="bi bi-chevron-down"></i>
+    </div>
+    <div id="sentimentCollapse" class="collapse">
+        <div class="p-2"><canvas id="sentimentChart"></canvas></div>
+    </div>
+</div>
+
+<!-- Collapsible Market Movement -->
+<div class="chart-container mb-3">
+    <div class="collapse-header market" data-bs-toggle="collapse" data-bs-target="#marketCollapse">
+        📈 Market Movement (Coming Soon) <i class="bi bi-chevron-down"></i>
+    </div>
+    <div id="marketCollapse" class="collapse">
+        <div class="p-2"><canvas id="marketChart"></canvas></div>
+    </div>
+</div>
+
+<!-- Collapsible Market Impact Summary -->
+<div class="card mb-4 p-0">
+    <div class="collapse-header summary" data-bs-toggle="collapse" data-bs-target="#summaryCollapse">
+        📌 Market Impact Summary <i class="bi bi-chevron-down"></i>
+    </div>
+    <div id="summaryCollapse" class="collapse">
+        <div class="p-3 bg-light">
+            {% for news in page_obj|slice:":5" %}
+                {% if news.summary %}
+                    {% if news.impact_score >= 0.5 %}
+                        <div class="alert alert-success p-2 mb-2">{{ news.summary }}</div>
+                    {% elif news.impact_score <= -0.5 %}
+                        <div class="alert alert-danger p-2 mb-2">{{ news.summary }}</div>
+                    {% else %}
+                        <div class="alert alert-secondary p-2 mb-2">{{ news.summary }}</div>
+                    {% endif %}
+                {% else %}
+                    <div class="alert alert-secondary p-2 mb-2">Summary not available.</div>
+                {% endif %}
+            {% empty %}
+                <p>No news to display.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- News List -->
+<div id="newsContainer">
+    {% for n in page_obj %}
+        <div class="news-card">
+            <h5><a href="{{ n.link }}" target="_blank">{{ n.title }}</a></h5>
+            <small class="text-muted d-block mb-1">{{ n.source }} | {{ n.published_dt|date:"Y-m-d H:i" }} |
+                {% if n.sentiment == "Positive" %}
+                    <span class="badge bg-success badge-snippet">Positive</span>
+                {% elif n.sentiment == "Negative" %}
+                    <span class="badge bg-danger badge-snippet">Negative</span>
+                {% else %}
+                    <span class="badge bg-secondary badge-snippet">Neutral</span>
+                {% endif %}
+            </small>
+            {% if n.content %}<p>{{ n.content|truncatechars:300 }}</p>{% endif %}
+        </div>
+    {% empty %}
+        <p>No news available.</p>
+    {% endfor %}
+</div>
+
+<!-- Pagination -->
+<nav aria-label="Page navigation" class="mt-3 text-center">
+    <p>Total Records: {{ page_obj.paginator.count }}</p>
+    <ul class="pagination justify-content-center flex-wrap">
+        {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?page=1">First</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">«</a></li>
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+                <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+            {% elif num > page_obj.number|add:"-3" and num < page_obj.number|add:"3" %}
+                <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+            {% endif %}
+        {% endfor %}
+        {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">»</a></li>
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Last</a></li>
+        {% endif %}
+    </ul>
+</nav>
+
+<script>
+$(document).ready(function(){
+    // Dark mode toggle
+    $('#darkModeToggle').click(function(){ $('body').toggleClass('dark-mode'); });
+
+    // Reset filters
+    $('#resetBtn').click(function(){
+        $.post("{% url 'set_language' %}", {'language':'en','csrfmiddlewaretoken':'{{ csrf_token }}'}, function(){
+            window.location.href="{% url 'news_page' %}";
+        });
+    });
+
+    // Sentiment Chart
+    const ctx = document.getElementById('sentimentChart').getContext('2d');
+    const sentimentChart = new Chart(ctx, {
+        type:'bar',
+        data:{
+            labels:['Positive','Negative','Neutral'],
+            datasets:[{
+                label:'Sentiment Distribution',
+                data:[{{ positive_count }},{{ negative_count }},{{ neutral_count }}],
+                backgroundColor:['rgba(40,167,69,0.6)','rgba(220,53,69,0.6)','rgba(108,117,125,0.6)']
+            }]
+        },
+        options:{
+            responsive:true,
+            plugins:{legend:{display:false}, title:{display:true,text:'Market News Sentiment'}},
+            onClick:function(evt,elements){
+                if(elements.length>0){
+                    const index=elements[0].index;
+                    const sentiment=sentimentChart.data.labels[index];
+                    $('select[name="sentiment"]').val(sentiment);
+                    $('#filtersForm').submit();
+                }
+            }
+        }
+    });
+
+    // Market Chart placeholder
+    const marketCtx = document.getElementById('marketChart').getContext('2d');
+    const marketChart = new Chart(marketCtx,{
+        type:'line',
+        data:{labels:[], datasets:[{label:'Market Movement', data:[], borderColor:'rgba(13,110,253,0.6)', fill:false}]},
+        options:{responsive:true, plugins:{legend:{display:true},title:{display:true,text:'Market Trends (Coming Soon)'}}}
+    });
+
+    // Rotate arrow on collapse toggle
+    $('.collapse-header').click(function(){
+        const icon = $(this).find('i');
+        const target = $(this).data('bs-target');
+        $(target).on('shown.bs.collapse', function(){ icon.css('transform','rotate(180deg)'); });
+        $(target).on('hidden.bs.collapse', function(){ icon.css('transform','rotate(0deg)'); });
+    });
+});
+</script>
+
+<!-- Bootstrap Icons CDN -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
+</body>
+</html>

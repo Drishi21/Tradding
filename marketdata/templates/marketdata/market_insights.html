@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Market Insights Dashboard</title>
+
+  <!-- Plotly CDN -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+  <style>
+    :root{
+      --primary:#4b5fff;
+      --bg:#f5f7fb;
+      --card:#ffffff;
+      --muted:#6b7280;
+      --success:#16a34a;
+      --danger:#ef4444;
+    }
+    body{margin:0;background:var(--bg);color:#111827;font-family:system-ui,Segoe UI,Roboto,Ubuntu,Arial;overflow-x:hidden}
+    .container{max-width:1400px;margin:0 auto;padding:10px}
+    h1{font-weight:800;text-align:center;color:#2b2f77;margin:8px 0 20px}
+    .toolbar{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:12px}
+    .toolbar select,.toolbar input,.toolbar button{
+      padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;font-weight:600
+    }
+    .toolbar button.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px}
+    .card{background:var(--card);border-radius:12px;padding:12px;box-shadow:0 4px 20px rgba(23,30,90,.07)}
+    .label{color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase}
+    .value{font-size:18px;font-weight:800;margin-top:4px}
+    .value.up{color:var(--success)} .value.down{color:var(--danger)}
+    .panel{background:var(--card);border-radius:14px;padding:8px;box-shadow:0 6px 24px rgba(23,30,90,.08);margin-bottom:10px}
+    .chart{width:100%;height:60vh;min-height:300px}
+    .subchart{width:100%;height:30vh;min-height:180px}
+    .hidden{display:none}
+    .muted{color:var(--muted);font-size:12px;text-align:center;margin:6px 0}
+    @media(max-width:768px){
+      .chart{height:50vh}
+      .subchart{height:25vh}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📊 Market Insights</h1>
+
+    <!-- Controls -->
+    <div class="toolbar">
+      <form id="controlForm" onsubmit="return false;">
+        <input type="text" id="symbol" value="{{ symbol }}" placeholder="Symbol e.g. ^NSEI" />
+        <select id="period">
+          <option value="1mo">1M</option><option value="3mo">3M</option>
+          <option value="6mo" selected>6M</option><option value="1y">1Y</option>
+          <option value="2y">2Y</option><option value="5y">5Y</option>
+        </select>
+        <select id="interval">
+          <option>1d</option><option>1h</option><option>30m</option><option>15m</option><option>5m</option>
+        </select>
+        <select id="chartType">
+          <option value="candlestick">Candles</option>
+          <option value="line">Line</option>
+          <option value="area">Area</option>
+        </select>
+        <button class="primary" id="loadBtn">Load</button>
+        <button id="liveBtn" title="Auto refresh every 60s">Live</button>
+        <button type="button" id="resetBtn">Reset Zoom</button>
+        <button type="button" id="toggleRSI">Toggle RSI</button>
+        <button type="button" id="toggleMACD">Toggle MACD</button>
+      </form>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="cards">
+      <div class="card"><div class="label">Last Close</div><div class="value" id="kpiClose">—</div></div>
+      <div class="card"><div class="label">RSI (14)</div><div class="value" id="kpiRSI">—</div></div>
+      <div class="card"><div class="label">MACD</div><div class="value" id="kpiMACD">—</div></div>
+      <div class="card"><div class="label">BB Width</div><div class="value" id="kpiBBW">—</div></div>
+    </div>
+
+    <!-- Charts -->
+    <div class="panel"><div id="candles" class="chart"></div></div>
+    <div class="panel" id="rsiPanel"><div id="rsi" class="subchart"></div></div>
+    <div class="panel" id="macdPanel"><div id="macd" class="subchart"></div></div>
+
+    <div class="muted">Data: Yahoo Finance • Indicators: RSI(14), MACD(12,26,9), Bollinger(20,2)</div>
+  </div>
+
+  <script>
+    const qs = id => document.getElementById(id);
+    let live=null, globalData=null;
+
+    async function fetchData(symbol, period, interval){
+      const url = `{% url 'insights_data' symbol='SYMB' %}`.replace('SYMB', encodeURIComponent(symbol))
+                + `?period=${encodeURIComponent(period)}&interval=${encodeURIComponent(interval)}`;
+      const res = await fetch(url);
+      if(!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    function renderCharts(payload){
+      globalData=payload;
+      const rows=payload.data;
+      if(!rows||!rows.length) return;
+
+      const x=rows.map(r=>r.t),o=rows.map(r=>r.o),h=rows.map(r=>r.h),l=rows.map(r=>r.l),c=rows.map(r=>r.c);
+      const rsi=rows.map(r=>r.rsi),macd=rows.map(r=>r.macd),signal=rows.map(r=>r.signal),hist=rows.map(r=>r.hist);
+      const bb_u=rows.map(r=>r.bb_u),bb_m=rows.map(r=>r.bb_m),bb_l=rows.map(r=>r.bb_l);
+
+      qs("kpiClose").textContent=c.at(-1);
+      qs("kpiRSI").textContent=rsi.at(-1)?rsi.at(-1).toFixed(2):"—";
+      qs("kpiMACD").textContent=macd.at(-1)&&signal.at(-1)?(macd.at(-1)-signal.at(-1)).toFixed(4):"—";
+      qs("kpiBBW").textContent=bb_u.at(-1)&&bb_l.at(-1)?(bb_u.at(-1)-bb_l.at(-1)).toFixed(2):"—";
+
+      const chartType=qs("chartType").value;
+      let mainTrace;
+      if(chartType==="candlestick"){mainTrace={type:"candlestick",x,open:o,high:h,low:l,close:c,name:"Price"};}
+      else if(chartType==="line"){mainTrace={type:"scatter",x,y:c,mode:"lines",name:"Line"};}
+      else{mainTrace={type:"scatter",x,y:c,mode:"lines",fill:"tozeroy",name:"Area"};}
+
+      const bbu={type:"scatter",x,y:bb_u,mode:"lines",name:"BB Upper",line:{width:1}};
+      const bbm={type:"scatter",x,y:bb_m,mode:"lines",name:"BB Mid",line:{dash:"dot",width:1}};
+      const bbl={type:"scatter",x,y:bb_l,mode:"lines",name:"BB Lower",line:{width:1}};
+
+      Plotly.newPlot("candles",[mainTrace,bbu,bbm,bbl],{
+        dragmode:"zoom",
+        margin:{t:10,r:10,l:40,b:30},
+        xaxis:{rangeslider:{visible:false},showspikes:true,spikemode:"across",spikesnap:"cursor"},
+        yaxis:{fixedrange:false,showspikes:true},
+      },{responsive:true,displayModeBar:true,displaylogo:false,modeBarButtonsToRemove:["lasso2d","select2d"]});
+
+      const rsiLine={type:"scatter",x,y:rsi,mode:"lines",name:"RSI"};
+      const rsi30={type:"scatter",x,y:x.map(()=>30),mode:"lines",line:{dash:"dot"},name:"30"};
+      const rsi70={type:"scatter",x,y:x.map(()=>70),mode:"lines",line:{dash:"dot"},name:"70"};
+      Plotly.newPlot("rsi",[rsiLine,rsi30,rsi70],{margin:{t:10,r:10,l:40,b:30},yaxis:{range:[0,100]}},
+        {responsive:true,displayModeBar:false});
+
+      const macdLine={type:"scatter",x,y:macd,mode:"lines",name:"MACD"};
+      const sigLine={type:"scatter",x,y:signal,mode:"lines",name:"Signal"};
+      const histBar={type:"bar",x,y:hist,name:"Hist",opacity:0.5};
+      Plotly.newPlot("macd",[histBar,macdLine,sigLine],{barmode:"relative",margin:{t:10,r:10,l:40,b:30}},
+        {responsive:true,displayModeBar:false});
+    }
+
+    async function loadNow(){
+      const symbol=qs("symbol").value||"^NSEI";
+      const period=qs("period").value;
+      const interval=qs("interval").value;
+      try{renderCharts(await fetchData(symbol,period,interval));}
+      catch(err){console.error(err);alert("Failed: "+err.message);}
+    }
+
+    qs("loadBtn").addEventListener("click",loadNow);
+    qs("chartType").addEventListener("change",()=>{if(globalData)renderCharts(globalData);});
+    qs("liveBtn").addEventListener("click",()=>{
+      if(live){clearInterval(live);live=null;qs("liveBtn").textContent="Live";}
+      else{loadNow();live=setInterval(loadNow,60000);qs("liveBtn").textContent="Live ✓";}
+    });
+    qs("resetBtn").addEventListener("click",()=>{Plotly.relayout("candles",{xaxis:{autorange:true},yaxis:{autorange:true}});});
+    qs("toggleRSI").addEventListener("click",()=>{qs("rsiPanel").classList.toggle("hidden");});
+    qs("toggleMACD").addEventListener("click",()=>{qs("macdPanel").classList.toggle("hidden");});
+    window.addEventListener("resize",()=>{if(globalData)renderCharts(globalData);});
+    window.addEventListener("load",loadNow);
+  </script>
+</body>
+</html>

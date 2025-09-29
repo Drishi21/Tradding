@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Trade Log</title>
+</head>
+<body>
+  <h1>My Trades</h1>
+  <table border="1">
+    <tr>
+      <th>Symbol</th>
+      <th>Strike</th>
+      <th>Type</th>
+      <th>Entry</th>
+      <th>SL</th>
+      <th>Target</th>
+      <th>Status</th>
+      <th>Time</th>
+    </tr>
+    {% for trade in trades %}
+    <tr>
+      <td>{{ trade.symbol }}</td>
+      <td>{{ trade.strike_price }}</td>
+      <td>{{ trade.option_type }}</td>
+      <td>{{ trade.entry_price }}</td>
+      <td>{{ trade.stop_loss }}</td>
+      <td>{{ trade.target }}</td>
+      <td>{{ trade.status }}</td>
+      <td>{{ trade.created_at }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</body>
+</html>

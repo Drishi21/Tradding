@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trade Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    /* Sticky ATM row like Groww */
+    .table-warning {
+      position: sticky;
+      top: 40px;
+      z-index: 2;
+    }
+    /* Compact option chain cells */
+    #option-chain-table td, #option-chain-table th {
+      padding: 6px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body class="bg-light">
+
+<div class="container mt-4">
+
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>📊 Trade Dashboard</h3>
+    <div>
+      <!-- Expiry Dropdown -->
+      <select id="expiry-select" class="form-select form-select-sm d-inline w-auto me-2">
+        {% for exp in expiries %}
+        <option value="{{ exp }}" {% if exp == default_expiry %}selected{% endif %}>{{ exp }}</option>
+        {% endfor %}
+      </select>
+      <button id="manual-refresh" class="btn btn-outline-success btn-sm me-2">🔄 Refresh Price</button>
+      <button id="new-trade" class="btn btn-outline-danger btn-sm me-2">➕ New Trade</button>
+      <a href="{% url 'record_list' %}" class="btn btn-outline-primary btn-sm">⬅ Back</a>
+    </div>
+  </div>
+
+  <!-- Live Price -->
+  <div class="alert alert-info shadow-sm d-flex justify-content-between align-items-center">
+    <div>📈 <b>Nifty:</b> <span id="live-nifty">{{ live_price }}</span></div>
+    <div class="text-end">
+      ⏱ <small>Last Updated: <span id="last-updated">--:--:--</span></small><br>
+      🔄 <small>Next Refresh: <span id="countdown">30</span>s</small>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div class="row text-center mb-4">
+    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Total</h6><h4>{{ summary.total }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm border-success text-success"><div class="card-body"><h6>✅ Success</h6><h4>{{ summary.success }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm border-danger text-danger"><div class="card-body"><h6>❌ Failed</h6><h4>{{ summary.failed }}</h4></div></div></div>
+    <div class="col-md-3"><div class="card shadow-sm border-warning text-warning"><div class="card-body"><h6>⏳ Pending</h6><h4>{{ summary.inprogress }}</h4></div></div></div>
+  </div>
+
+  <!-- Win Rate + Option Chain -->
+  <div class="card mb-4 shadow-sm text-center">
+    <div class="card-body">
+      <h5>🏆 Win Rate</h5>
+      <h3 style="color:{% if summary.win_rate >= 60 %}green{% elif summary.win_rate >= 40 %}orange{% else %}red{% endif %}">
+        {{ summary.win_rate }}%
+      </h3>
+      <button id="view-option-chain" class="btn btn-outline-dark btn-sm mt-2">📊 View Full Option Chain</button>
+    </div>
+  </div>
+
+  <!-- Option Chain Container -->
+  <div class="collapse" id="option-chain-container">
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h5>📌 Option Chain (Expiry: <span id="current-expiry">{{ default_expiry }}</span>)</h5>
+        <div id="option-chain-table">⚡ Click to load option chain...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trade History -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="mb-3">📑 Trade History</h5>
+      <div class="table-responsive" style="max-height:600px; overflow-y:auto;">
+        <table class="table table-hover table-striped align-middle">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Time</th><th>Nifty</th><th>Direction</th><th>Entry</th><th>SL</th><th>Target</th>
+              <th>Confidence</th><th>Status</th><th>Expiry</th><th>Time Left</th><th>Options</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for plan in plans %}
+            <tr class="{% if plan.direction == 'Short' %}table-danger{% else %}table-success{% endif %}">
+              <td>{{ plan.created_at|date:"d M Y, H:i" }}</td>
+              <td><b>{{ plan.level }}</b></td>
+              <td style="color:{% if plan.direction == 'Long' %}green{% else %}red{% endif %}">{{ plan.direction }}</td>
+              <td>{{ plan.entry_price }}</td>
+              <td>{{ plan.stop_loss }}</td>
+              <td>{{ plan.target }}</td>
+              <td><span style="color:{% if plan.confidence >= 70 %}green{% elif plan.confidence >= 40 %}orange{% else %}red{% endif %}">{{ plan.confidence }}%</span></td>
+              <td>
+                {% if plan.status == "Hit Target" %}<span class="badge bg-success">🎯 {{ plan.status }}</span>
+                {% elif plan.status == "Stop Loss" %}<span class="badge bg-danger">❌ {{ plan.status }}</span>
+                {% else %}<span class="badge bg-warning text-dark">⏳ {{ plan.status }}</span>{% endif %}
+              </td>
+              <td><span class="badge bg-secondary expiry-date" data-expiry="{{ plan.expiry|default:default_expiry }}">{{ plan.expiry|default:default_expiry }}</span></td>
+              <td><span id="time-left-{{ plan.id }}">--</span></td>
+              <td><button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#options-{{ plan.id }}">📌 View Options</button></td>
+            </tr>
+            <!-- Option Trades -->
+            <tr>
+              <td colspan="11" class="p-0">
+                <div class="collapse option-collapse" id="options-{{ plan.id }}">
+                  <div class="card card-body">
+                    <h6 class="mb-2">📌 Suggested Option Trades (Expiry: {{ plan.expiry|default:default_expiry }})</h6>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-bordered mb-2">
+                        <thead class="table-light"><tr><th>Strike</th><th>Type</th><th>LTP</th><th>SL</th><th>Target</th><th>Status</th></tr></thead>
+                        <tbody>
+                          {% for opt in plan.options.all %}
+                          <tr>
+                            <td>{{ opt.strike }}</td>
+                            <td><span class="badge bg-primary">BUY {{ opt.type }}</span></td>
+                            <td>{{ opt.ltp }}</td>
+                            <td>{{ opt.stop_loss }}</td>
+                            <td>{{ opt.target }}</td>
+                            <td>
+                              {% if opt.status == "Hit Target" %}<span class="badge bg-success">🎯 {{ opt.status }}</span>
+                              {% elif opt.status == "Stop Loss" %}<span class="badge bg-danger">❌ {{ opt.status }}</span>
+                              {% else %}<span class="badge bg-info text-dark">⏳ {{ opt.status }}</span>{% endif %}
+                            </td>
+                          </tr>
+                          {% empty %}
+                          <tr><td colspan="6" class="text-center text-muted">No option trades</td></tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="11" class="text-center text-muted">No trades yet</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ✅ Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let refreshInterval = 30, countdown = refreshInterval;
+setInterval(() => { document.getElementById("countdown").innerText = countdown; if (countdown<=0){ refreshTradePrices(); countdown=refreshInterval;} countdown--; }, 1000);
+
+// Refresh Live Price
+function refreshTradePrices(){
+  fetch("{% url 'trade_prices_api' %}?expiry=" + document.getElementById("expiry-select").value, {headers:{"X-Requested-With":"XMLHttpRequest"}})
+    .then(res=>res.json()).then(data=>{
+      document.getElementById("live-nifty").innerText=data.nifty;
+      document.getElementById("last-updated").innerText=new Date().toLocaleTimeString("en-IN",{hour12:false});
+    });
+}
+document.getElementById("manual-refresh").addEventListener("click",()=>{refreshTradePrices();countdown=refreshInterval;});
+
+// New Trade
+document.getElementById("new-trade").addEventListener("click",()=>{
+  fetch("{% url 'live_trade_plan' %}?expiry="+document.getElementById("expiry-select").value,{headers:{"X-Requested-With":"XMLHttpRequest"}})
+    .then(res=>res.json()).then(data=>{alert("✅ New Trade: "+data.direction+" @ "+data.price);location.reload();});
+});
+
+// Expiry Countdown
+function updateExpiryCountdown(){
+  document.querySelectorAll(".expiry-date").forEach(el=>{
+    const expiry=new Date(el.dataset.expiry+"T15:30:00+05:30"),now=new Date(),diffMs=expiry-now;
+    const planId=el.closest("tr").querySelector("button").dataset.bsTarget.split("-")[1];
+    const span=document.getElementById("time-left-"+planId);
+    if(diffMs>0){ span.innerText=Math.floor(diffMs/36e5)+"h "+Math.floor((diffMs%36e5)/6e4)+"m"; }
+    else span.innerText="Expired";
+  });
+}
+setInterval(updateExpiryCountdown,60000);updateExpiryCountdown();
+
+// Option Chain Loader
+function trendArrow(t){ if(t==="up")return"⬆️"; if(t==="down")return"⬇️"; return "➖"; }
+function loadFullOptionChain(){
+  const nifty=parseInt(document.getElementById("live-nifty").innerText||0),atm=Math.round(nifty/50)*50,expiry=document.getElementById("expiry-select").value;
+  document.getElementById("current-expiry").innerText=expiry;
+  fetch(`/marketdata/option_chain/${atm}/?expiry=${expiry}`).then(res=>res.json()).then(data=>{
+    let html=`<div class="table-responsive"><table class="table table-sm table-bordered text-center"><thead class="table-light"><tr><th>Call OI</th><th>Call LTP</th><th>Strike</th><th>Put LTP</th><th>Put OI</th></tr></thead><tbody>`;
+    data.snapshot.forEach(r=>{
+      let cls=""; if(r.strike===data.atm)cls="table-warning"; else if(r.strike===data.support)cls="table-success"; else if(r.strike===data.resistance)cls="table-danger";
+      let tr=data.trend[r.strike]||{}; html+=`<tr class="${cls}"><td>${r.call_oi} ${trendArrow(tr.call_oi_trend)}</td><td>₹${r.call_ltp}</td><td><b>${r.strike}</b></td><td>₹${r.put_ltp}</td><td>${r.put_oi} ${trendArrow(tr.put_oi_trend)}</td></tr>`;
+    });
+    html+=`</tbody></table></div><div>🟢 <b>Support:</b> ${data.support||'--'} | 🔴 <b>Resistance:</b> ${data.resistance||'--'} | 🟡 <b>ATM:</b> ${data.atm||'--'}</div>`;
+    document.getElementById("option-chain-table").innerHTML=html;
+  }).catch(()=>{document.getElementById("option-chain-table").innerHTML="<div class='text-danger'>⚠️ Failed to load option chain</div>";});
+}
+document.getElementById("view-option-chain").addEventListener("click",()=>{const c=document.getElementById("option-chain-container");const bs=new bootstrap.Collapse(c,{toggle:true});if(!c.classList.contains("show"))loadFullOptionChain();});
+document.getElementById("expiry-select").addEventListener("change",()=>{const c=document.getElementById("option-chain-container");const bs=bootstrap.Collapse.getInstance(c);if(bs)bs.hide();});
+</script>
+</body>
+</html>

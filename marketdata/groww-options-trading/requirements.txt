@@ -1,0 +1,10 @@
+Django==5.0.6
+djangorestframework==3.15.1
+djangorestframework-simplejwt==5.3.1
+psycopg2-binary==2.9.9
+celery==5.3.6
+redis==5.0.4
+requests==2.31.0
+growwapi==1.0.0
+pyotp==2.9.0
+python-decouple==3.8

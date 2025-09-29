@@ -1,0 +1,357 @@
+{% load static %}
+{% load heatmap_filters %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NIFTY Option Chain Dashboard</title>
+ 
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+  /* -------- Base Styling -------- */
+  body {
+    background: linear-gradient(135deg,#eef2f3,#dfe9f3);
+    font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #343a40;
+    transition: background-color 0.4s ease, color 0.4s ease;
+  }
+  h2 {
+    font-weight: 800;
+    background: linear-gradient(45deg,#007bff,#6610f2);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* -------- Table Styling -------- */
+  table {
+    font-size: 14px;
+    text-align: center;
+    border-collapse: separate;
+    border-spacing: 0 6px;
+  }
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: #212529;
+    color: #fff;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+  }
+  tbody tr {
+    background: #fff;
+    border-radius: 6px;
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+  }
+  tbody tr:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  .strike-highlight { background: #f5f7fa !important; font-weight: 700; }
+  .safe-trade { background: #e6f3ff !important; }
+  .resistance_trap { background-color: #ffe5e5 !important; }
+  .support_trap { background-color: #e5ffe5 !important; }
+  .iv_spike { background-color: #fff9cc !important; }
+
+  /* -------- Summary Cards -------- */
+  .summary-card {
+    border-radius: 14px;
+    padding: 18px;
+    font-weight: 700;
+    color: white;
+    backdrop-filter: blur(6px);
+    background: linear-gradient(145deg, rgba(0,0,0,0.5), rgba(0,0,0,0.35));
+    box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .summary-card:hover {
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.15);
+  }
+
+  /* -------- Chart Container -------- */
+  .chart-container {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 5px 18px rgba(0,0,0,0.08);
+    padding: 20px;
+    transition: transform 0.2s ease;
+  }
+  .chart-container:hover {
+    transform: scale(1.01);
+  }
+
+  /* -------- Buttons -------- */
+  .btn-outline-info {
+    border-width: 2px;
+    border-radius: 10px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+  }
+  .btn-outline-info:hover {
+    background: linear-gradient(45deg,#17a2b8,#6610f2);
+    color: #fff;
+    border-color: transparent;
+  }
+
+  /* -------- Dark Mode -------- */
+  .dark-mode {
+    background: #0e1117;
+    color: #ddd;
+  }
+  .dark-mode .chart-container { background: #1b1f29; }
+  .dark-mode .summary-card {
+    background: linear-gradient(145deg, #1f2733, #2b3340);
+    color: #f8f9fa;
+  }
+  .dark-mode table tbody tr { background: #1c212d; color: #ddd; }
+  .dark-mode table thead th { background: #343a40; }
+  .dark-mode .btn-outline-info {
+    color: #ddd; border-color: #555;
+  }
+  .dark-mode .btn-outline-info:hover {
+    background: #444; color:#fff;
+  }
+
+  /* -------- Arrow Rotation -------- */
+  .arrow-icon {
+    display: inline-block;
+    transition: transform 0.3s ease;
+    margin-left: 6px;
+  }
+  .arrow-rotated {
+    transform: rotate(180deg);
+  }
+</style>
+</head>
+<body>
+
+<div class="container my-4">
+  <!-- Header with Dark Mode Toggle -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>📊 NIFTY Option Chain Dashboard</h2>
+    <div>
+      <button class="btn btn-outline-dark btn-sm me-2" onclick="toggleDarkMode()" id="darkModeBtn">🌙 Dark Mode</button>
+    </div>
+  </div>
+
+  
+
+  {% if error %}
+  <div class="alert alert-danger text-center">{{ error }}</div>
+  {% endif %}
+
+  
+  <!-- Summary Cards -->
+  <div class="row g-12 justify-content-center mb-4">
+    <div class="col-md-2 col-sm-6">
+      <div class="summary-card bg-success text-center">Max Call OI: {{ summary.max_call_oi }}</div>
+    </div>
+    <div class="col-md-2 col-sm-6">
+      <div class="summary-card bg-danger text-center">Max Put OI: {{ summary.max_put_oi }}</div>
+    </div>
+    <div class="col-md-2 col-sm-6">
+      <div class="summary-card bg-warning text-dark text-center">Difference OI: {{ summary.max_call_oi|subtract:summary.max_put_oi }}</div>
+    </div>
+    <div class="col-md-2 col-sm-6">
+      <div class="summary-card bg-info text-white text-center">Max Call IV: {{ summary.max_call_iv }}</div>
+    </div>
+    <div class="col-md-2 col-sm-6">
+      <div class="summary-card bg-primary text-white text-center">Max Put IV: {{ summary.max_put_iv }}</div>
+    </div>
+    <div class="col-md-2 col-sm-6">
+      <div class="summary-card bg-secondary text-white text-center">Difference IV: {{ summary.max_call_iv|subtract:summary.max_put_iv }}</div>
+    </div>
+  </div>
+
+  <!-- Beginner Notes -->
+  <div class="text-center mb-3">
+    <!-- Expiry Selection -->
+  <form method="get" class="mb-4 text-center">
+     <!-- Sentiment & Underlying -->
+  <div class="text-center mb-4">
+    <span class="badge bg-warning text-dark fs-6">Market Sentiment: {{ sentiment }}</span>
+    <span class=" badge bg-warning text-dark fs-6">Underlying: <b>₹{{ underlying }}</b></span>
+  <label for="expiry" class="me-2 fw-bold">Select Expiry:</label>
+    <select name="expiry" id="expiry" class="form-select d-inline-block w-auto" onchange="this.form.submit()">
+      {% for e in expiries %}
+        <option value="{{ e }}" {% if e == selected_expiry %}selected{% endif %}>{{ e }}</option>
+      {% endfor %}
+    </select>
+      <button class="btn btn-danger text-center " onclick="resetDashboard()">🔄 Reset</button>
+
+  </div>
+
+    
+  </form>
+    <button class="btn btn-outline-info fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#notes" aria-expanded="false">
+      📌 Beginner Trading Notes & Rules (click)
+    </button>
+  </div>
+  <div class="collapse" id="notes">
+    <div class="card card-body note-box mb-4">
+      <h5>Quick Trading Rules</h5>
+      <ul class="list-unstyled">
+        <li>✔ <b>ATM</b>: Closest strike to current index (table is centered here).</li>
+        <li>⚠ <b>Call-heavy</b>: Sellers dominate calls, watch for resistance.</li>
+        <li>⚠ <b>Put-heavy</b>: Strong support potential, watch for upward moves.</li>
+        <li>📊 <b>IV High</b>: Options are expensive; prefer defined-risk strategies.</li>
+        <li>✅ <b>Safe trade</b>: Balanced OI and normal IV — lower-risk candidate.</li>
+        <li>❗ Always confirm with news, global cues, and risk management tools.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Alerts -->
+  <div id="alertsPanel" class="mb-4"></div>
+
+  <!-- Chart -->
+  <div class="chart-container mb-4">
+    <h5 class="text-center mb-3">📊 Call/Put OI vs Strike</h5>
+    <canvas id="oiChart" height="150"></canvas>
+  </div>
+
+  <!-- Option Table -->
+  <div class="table-responsive mb-4" id="optionTable">
+    <table class="table table-bordered table-hover">
+      <thead class="table-dark">
+        <tr>
+          <th title="Call OI">Call OI</th>
+          <th title="Call IV">% Call IV</th>
+          <th title="Call LTP">Call LTP</th>
+          <th title="Strike">Strike</th>
+          <th title="Put LTP">Put LTP</th>
+          <th title="Put IV">% Put IV</th>
+          <th title="Put OI">Put OI</th>
+          <th title="Suggestion">Suggestion</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in options %}
+        <tr class="{% if row.strikePrice == atm_strike %} strike-highlight {% endif %}{% if row.trap_type %} {{ row.trap_type }} {% endif %}{% if row.safe_trade %} safe-trade {% endif %}">
+          <td style="background-color: rgba(0,128,0,{{ row.call_oi_pct|opacity }});" title="Call OI: {{ row.call_oi }}">{{ row.call_oi }}</td>
+          <td style="background-color: rgba(0,0,255,{{ row.call_iv_pct|opacity }}); color:white;" title="Call IV: {{ row.call_iv }}">{{ row.call_iv }}</td>
+          <td class="green" title="Call LTP: ₹{{ row.call_ltp }}">₹{{ row.call_ltp }}</td>
+          <td><b>{{ row.strikePrice }}</b></td>
+          <td class="red" title="Put LTP: ₹{{ row.put_ltp }}">₹{{ row.put_ltp }}</td>
+          <td style="background-color: rgba(0,0,255,{{ row.put_iv_pct|opacity }}); color:white;" title="Put IV: {{ row.put_iv }}">{{ row.put_iv }}</td>
+          <td style="background-color: rgba(255,0,0,{{ row.put_oi_pct|opacity }});" title="Put OI: {{ row.put_oi }}">{{ row.put_oi }}</td>
+          <td title="Suggestion">{{ row.suggestion }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <audio id="alertSound" src="{% static 'sounds/alert.mp3' %}" preload="auto"></audio>
+</div>
+
+<script>
+  function initTooltips() {
+    document.querySelectorAll('[title]').forEach(el => new bootstrap.Tooltip(el));
+  }
+
+  function toggleDarkMode() {
+    const btn = document.getElementById('darkModeBtn');
+    document.body.classList.toggle('dark-mode');
+    if(document.body.classList.contains('dark-mode')) {
+      btn.textContent = '☀ Light Mode';
+      localStorage.setItem('darkMode', 'enabled');
+    } else {
+      btn.textContent = '🌙 Dark Mode';
+      localStorage.setItem('darkMode', 'disabled');
+    }
+  }
+
+  function resetDashboard() {
+      window.location.href = window.location.pathname;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if(localStorage.getItem('darkMode') === 'enabled') {
+      document.body.classList.add('dark-mode');
+      document.getElementById('darkModeBtn').textContent = '☀ Light Mode';
+    }
+    initTooltips();
+    refreshData();
+    setInterval(refreshData, 60000);
+  });
+
+  const ctx = document.getElementById('oiChart').getContext('2d');
+  const oiChart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: [], datasets: [
+      { label: 'Call OI', data: [], backgroundColor: 'rgba(0,128,0,0.7)' },
+      { label: 'Put OI', data: [], backgroundColor: 'rgba(255,0,0,0.7)' }
+    ]},
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      scales: {
+        x: { title: { display: true, text: 'Strike' } },
+        y: { title: { display: true, text: 'Open Interest' }, beginAtZero: true }
+      }
+    }
+  });
+
+  const alertSound = document.getElementById("alertSound");
+
+  async function refreshData() {
+    try {
+      const res = await fetch("{% url 'option_chain' %}", {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      const data = await res.json();
+
+      const tbody_html = data.options.map(row => {
+        const call_oi_opacity = (row.call_oi_pct > 1 ? row.call_oi_pct/100 : row.call_oi_pct);
+        const put_oi_opacity = (row.put_oi_pct > 1 ? row.put_oi_pct/100 : row.put_oi_pct);
+        const call_iv_opacity = (row.call_iv_pct > 1 ? row.call_iv_pct/100 : row.call_iv_pct);
+        const put_iv_opacity = (row.put_iv_pct > 1 ? row.put_iv_pct/100 : row.put_iv_pct);
+
+        let classes = "";
+        if(row.strikePrice === data.atm_strike) classes += " strike-highlight";
+        if(row.trap_type) classes += " " + row.trap_type;
+        if(row.safe_trade) classes += " safe-trade";
+
+        return `<tr class="${classes}">
+          <td style="background-color: rgba(0,128,0,${call_oi_opacity});" title="Call OI: ${row.call_oi}">${row.call_oi}</td>
+          <td style="background-color: rgba(0,0,255,${call_iv_opacity}); color:white;" title="Call IV: ${row.call_iv}">${row.call_iv}</td>
+          <td class="green" title="Call LTP: ₹${row.call_ltp}">₹${row.call_ltp}</td>
+          <td><b>${row.strikePrice}</b></td>
+          <td class="red" title="Put LTP: ₹${row.put_ltp}">₹${row.put_ltp}</td>
+          <td style="background-color: rgba(0,0,255,${put_iv_opacity}); color:white;" title="Put IV: ${row.put_iv}">${row.put_iv}</td>
+          <td style="background-color: rgba(255,0,0,${put_oi_opacity});" title="Put OI: ${row.put_oi}">${row.put_oi}</td>
+          <td title="Suggestion">${row.suggestion}</td>
+        </tr>`;
+      }).join("");
+
+      const tableBody = document.querySelector('#optionTable table tbody');
+      if(tableBody) tableBody.innerHTML = tbody_html;
+
+      initTooltips();
+
+      oiChart.data.labels = data.options.map(r => r.strikePrice);
+      oiChart.data.datasets[0].data = data.options.map(r => r.call_oi);
+      oiChart.data.datasets[1].data = data.options.map(r => r.put_oi);
+      oiChart.update();
+
+    } catch (e) {
+      console.error("Refresh error:", e);
+    }
+  }
+</script>
+
+</body>
+</html>

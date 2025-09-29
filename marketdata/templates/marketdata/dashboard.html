@@ -1,0 +1,132 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Market Trap Dashboard 📊</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        h1 { text-align: center; margin-bottom: 30px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: center; }
+        th { background-color: #007bff; color: white; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+        .trap-true { color: red; font-weight: bold; }
+        .trap-false { color: green; font-weight: bold; }
+        td.news { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        form button { margin-left: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Market Trap Dashboard</h1>
+
+    <!-- Date Filter & Action Buttons -->
+    <form method="get" style="margin-bottom: 20px;">
+        Start Date: <input type="date" name="start_date" value="{{ start_date }}">
+        End Date: <input type="date" name="end_date" value="{{ end_date }}">
+        <button type="submit">Filter</button>
+        <button type="submit" name="action" value="update">Update Records</button>
+        <a href="{% url 'market_trap_dashboard' %}"><button type="button">Reset</button></a>
+    </form>
+
+    <!-- Trap Table -->
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Trap Detected</th>
+                <th>Trap Type</th>
+                <th>FII/DII Signal</th>
+                <th>Confidence</th>
+                <th>Future Decision</th>
+                <th>Related News</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for date, info in trap_results.items %}
+            <tr>
+                <td>{{ date }}</td>
+                <td class="{% if info.trap_detected %}trap-true{% else %}trap-false{% endif %}">
+                    {% if info.trap_detected %}Yes{% else %}No{% endif %}
+                </td>
+                <td>{{ info.trap_type|default:"-" }}</td>
+                <td>{{ info.fii_dii_signal|default:"-" }}</td>
+                <td>{{ info.confidence|floatformat:2 }}</td>
+                <td>{{ info.future_decision|default:"-" }}</td>
+                <td class="news" title="{{ info.related_news }}">{{ info.related_news|truncatechars:50 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Confidence Chart -->
+    <canvas id="trapChart" width="1200" height="400"></canvas>
+    <script>
+        const chartData = {{ chart_data|safe }};
+        const ctx = document.getElementById('trapChart').getContext('2d');
+
+        const labels = chartData.map(d => d.date);
+        const confidenceData = chartData.map(d => d.confidence);
+        const trapFlags = chartData.map(d => d.trap_detected ? 1 : 0);
+        const signals = chartData.map(d => d.fii_dii_signal);
+
+        const trapChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Trap Confidence',
+                        data: confidenceData,
+                        borderColor: 'blue',
+                        backgroundColor: 'rgba(0,123,255,0.2)',
+                        yAxisID: 'y1',
+                        tension: 0.3
+                    },
+                    {
+                        label: 'Trap Detected',
+                        data: trapFlags,
+                        borderColor: 'red',
+                        backgroundColor: 'rgba(255,0,0,0.2)',
+                        type: 'bar',
+                        yAxisID: 'y2'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const index = context.dataIndex;
+                                const signal = signals[index];
+                                return `${context.dataset.label}: ${context.parsed.y}, FII/DII: ${signal}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y1: {
+                        type: 'linear',
+                        position: 'left',
+                        title: { display: true, text: 'Confidence' },
+                        min: 0,
+                        max: 1
+                    },
+                    y2: {
+                        type: 'linear',
+                        position: 'right',
+                        title: { display: true, text: 'Trap Detected (0/1)' },
+                        min: 0,
+                        max: 1,
+                        grid: { drawOnChartArea: false }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

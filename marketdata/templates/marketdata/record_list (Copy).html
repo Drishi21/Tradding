@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Market Tracker 📊</title>
+<style>
+/* --- Base --- */
+body {
+  font-family:'Segoe UI', Tahoma, Geneva, Verdana,sans-serif;
+  background:#f0f4ff;
+  color:#333;
+  padding:20px;
+}
+h1 {
+  text-align:center;
+  color:#7b2ff7;
+  font-size:2rem;
+  margin-bottom:20px;
+  text-shadow:1px 1px 2px rgba(0,0,0,0.1);
+}
+
+/* --- Toolbar --- */
+.toolbar {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  margin-bottom:20px;
+}
+select,input[type="date"],.btn-submit {
+  padding:6px 10px;
+  border-radius:6px;
+  border:1px solid #ccc;
+  font-size:14px;
+  cursor:pointer;
+}
+select:hover,input[type="date"]:hover {
+  border-color:#7b2ff7;
+  box-shadow:0 0 6px rgba(123,47,247,0.3);
+}
+.btn-submit {
+  background:linear-gradient(135deg,#7b2ff7,#f107a3);
+  color:white;
+  font-weight:600;
+  border:none;
+}
+
+.btn-submit:hover {
+  opacity:0.9;
+}
+
+/* --- Snippets --- */
+.snippets-wrapper {
+  display:flex;
+  align-items:center;
+  gap:5px;
+  margin-bottom:15px;
+}
+.snippets {
+  display:flex;
+  overflow-x:auto;
+  scroll-behavior:smooth;
+  gap:10px;
+  padding:5px 0;
+}
+.snippets::-webkit-scrollbar {
+  height:6px;
+}
+.snippets::-webkit-scrollbar-track {
+  background:#f0f0f0;
+  border-radius:4px;
+}
+.snippets::-webkit-scrollbar-thumb {
+  background:#c0c0c0;
+  border-radius:4px;
+}
+.snippet {
+  min-width:120px;
+  padding:10px 12px;
+  text-align:center;
+  border-radius:12px;
+  box-shadow:0 4px 10px rgba(0,0,0,0.08);
+  transition:transform 0.3s, box-shadow 0.3s, background 0.3s;
+  flex:0 0 auto;
+}
+.snippet.bullish {
+  background:linear-gradient(135deg,#d4fdd2,#a1f2a6);
+  border:1px solid green;
+}
+.snippet.bearish {
+  background:linear-gradient(135deg,#ffd6d6,#ff9c9c);
+  border:1px solid red;
+}
+.snippet:hover {
+  transform:translateY(-3px);
+  box-shadow:0 6px 15px rgba(0,0,0,0.15);
+}
+.snippet .day-label {
+  font-weight:bold;
+  margin-bottom:5px;
+  font-size:0.85rem;
+}
+.snippet .trend {
+  font-size:1rem;
+  font-weight:600;
+  margin-bottom:4px;
+}
+.snippet .trade {
+  font-weight:500;
+  font-size:0.9rem;
+}
+
+/* --- Table --- */
+table {
+  width:100%;
+  border-collapse:collapse;
+  background-color:#fff;
+  border-radius:12px;
+  overflow:hidden;
+  box-shadow:0 6px 18px rgba(0,0,0,0.08);
+}
+th,td {
+  padding:10px 8px;
+  text-align:center;
+  font-size:13px;
+}
+th {
+  background:linear-gradient(135deg, #7b2ff7, #f107a3);
+  color:white;
+  font-weight:700;
+}
+tr:nth-child(even) {
+  background-color:#f7f8fa;
+}
+tr:hover {
+  background:linear-gradient(90deg,#e0e7ff,#d0e0ff);
+  transform:translateY(-2px);
+  box-shadow:0 6px 15px rgba(0,0,0,0.12);
+}
+.open { background-color:#dff6ff; font-weight:bold; }
+.low { background-color:#fff6e6; font-weight:bold; }
+.high { background-color:#e6ffe6; font-weight:bold; }
+.close { background-color:#fff0f6; font-weight:bold; }
+.points-positive { color:green; font-weight:bold; }
+.points-negative { color:red; font-weight:bold; }
+.bullish { color:green; font-weight:bold; }
+.bearish { color:red; font-weight:bold; }
+
+/* --- Accordion --- */
+.accordion-content {
+  display: none;
+}
+.accordion-content.active {
+  display: table-row-group;
+}
+
+/* --- Pagination --- */
+.pagination {
+  text-align:center;
+  margin-top:15px;
+}
+.pagination a, .pagination span {
+  display:inline-block;
+  margin:0 5px;
+  padding:6px 10px;
+  border-radius:6px;
+  text-decoration:none;
+  color:#7b2ff7;
+  font-weight:600;
+}
+.pagination a:hover {
+  background:#7b2ff7;
+  color:#fff;
+}
+.pagination .current {
+  background:#7b2ff7;
+  color:#fff;
+}
+
+/* --- Buttons --- */
+.btn {
+  display:inline-block;
+  padding:8px 12px;
+  border-radius:8px;
+  font-weight:600;
+  text-decoration:none;
+  cursor:pointer;
+  color:white;
+  border:none;
+  box-shadow:0 4px 12px rgba(0,0,0,0.1);
+  transition:0.3s;
+}
+.btn:hover {
+  transform:translateY(-2px);
+}
+.btn-add {
+  background:linear-gradient(135deg,#7b2ff7,#f107a3);
+}
+.btn-update {
+  background:linear-gradient(135deg,#28a745,#71c562);
+}
+.btn-reset {
+  background:linear-gradient(135deg,#ff4e50,#f9d423);
+  color:black;
+}
+
+
+/* --- Responsive --- */
+@media (max-width:1200px){
+  table,thead,tbody,th,td,tr{display:block;}
+  th{top:0;}
+  tr{margin-bottom:15px;}
+  td{text-align:right;padding-left:50%;position:relative;}
+  td::before{content:attr(data-label);position:absolute;left:15px;width:45%;text-align:left;font-weight:600;}
+}
+</style>
+<script>
+function resetAll(){
+  window.location.href="{% url 'record_list' %}";
+}
+
+function scrollSnippets(direction){
+  const container = document.getElementById('snippets');
+  container.scrollBy({left:direction*150,behavior:'smooth'});
+}
+
+
+function toggleAccordion(id){
+  const el = document.getElementById(id);
+  if(el.classList.contains('active')){
+    el.classList.remove('active');
+  } else {
+    el.classList.add('active');
+  }
+}
+</script>
+</head>
+<body>
+
+<h1>NIFTY Market Tracker 📊</h1>
+<!-- Toolbar -->
+<div class="toolbar">
+  <form method="get" style="display:flex; gap:5px;" title="Filter Records">
+    <select name="filter">
+      <option value="all" {% if filter_option == 'all' %}selected{% endif %}>All</option>
+      <option value="monday" {% if filter_option == 'monday' %}selected{% endif %}>Monday</option>
+      <option value="tuesday" {% if filter_option == 'tuesday' %}selected{% endif %}>Tuesday</option>
+      <option value="wednesday" {% if filter_option == 'wednesday' %}selected{% endif %}>Wednesday</option>
+      <option value="thursday" {% if filter_option == 'thursday' %}selected{% endif %}>Thursday</option>
+      <option value="friday" {% if filter_option == 'friday' %}selected{% endif %}>Friday</option>
+      <option value="yesterday" {% if filter_option == 'yesterday' %}selected{% endif %}>Yesterday</option>
+      <option value="week" {% if filter_option == 'week' %}selected{% endif %}>This Week</option>
+      <option value="month" {% if filter_option == 'month' %}selected{% endif %}>This Month</option>
+      <option value="3months" {% if filter_option == '3months' %}selected{% endif %}>Last 3 Months</option>
+    </select>
+    <button type="submit" class="btn-submit" title="Apply Filter">⚡</button>
+  </form>
+  <form method="post" style="display:inline;">{% csrf_token %}
+    <button type="submit" name="update_data" class="btn btn-update" title="Update Data">🔄</button>
+  </form>
+  <button onclick="resetAll()" class="btn btn-reset" title="Reset All">🗑️</button>
+</div>
+<!-- Snippets -->
+<h2 style="text-align:center; margin-bottom:10px;">Trade Suggestion for {{ snippet_date }}</h2>
+<div class="snippets-wrapper">
+  <button class="scroll-btn" onclick="scrollSnippets(-1)"></button>
+  <div class="snippets" id="snippets">
+    {% for label,snippet in snippets.items %}
+    <div class="snippet {% if snippet.trend == 'Bullish' %}bullish{% else %}bearish{% endif %}">
+      <div class="day-label">{{ label }}</div>
+      <div class="trend">{% if snippet.trend == 'Bullish' %}📈 {{ snippet.trend }}{% else %}📉 {{ snippet.trend }}{% endif %}</div>
+      <div class="trade" style="color:{% if snippet.trade == 'Call' %}green{% else %}red{% endif %};">Take {{ snippet.trade }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <button class="scroll-btn" onclick="scrollSnippets(1)"></button>
+</div>
+<!-- Bulk Delete -->
+<form id="bulk-delete-form" method="post" >
+  {% csrf_token %}
+  <!-- Records Table -->
+  <table>
+    <thead>
+      <tr>
+        <th>S.No</th>
+        <th>Date</th>
+        <th>Open</th>
+        <th>Low</th>
+        <th>High</th>
+        <th>Close</th>
+        <th>Points</th>
+        <th>Decision</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rec in records %}
+      <tr class="accordion-row" onclick="toggleAccordion('hours-{{ rec.id }}')">
+        <td data-label="S.No">{{ forloop.counter0|add:records.start_index }}</td>
+        <td data-label="Date">{{ rec.date|date:"D" }} {{ rec.date }}</td>
+        <td class="open">{{ rec.nifty_open }}</td>
+        <td class="low">{{ rec.nifty_low }}</td>
+        <td class="high">{{ rec.nifty_high }}</td>
+        <td class="close">{{ rec.nifty_close }}</td>
+        <td class="{% if rec.points >= 0 %}points-positive{% else %}points-negative{% endif %}">{% if rec.points >= 0 %}+{% endif %}{{ rec.points }}</td>
+        <td class="{% if rec.decision == 'Bullish' %}bullish{% else %}bearish{% endif %}">{{ rec.decision }}</td>
+
+      </tr>
+      <tbody id="hours-{{ rec.id }}" class="accordion-content">
+        <tr>
+          <td colspan="10">
+            <table style="width:100%; border-collapse:collapse;">
+              <thead>
+                <tr style="background:#7b2ff7; color:white;">
+                  <th>Hour</th>
+                  <th>Open</th>
+                  <th>High</th>
+                  <th>Low</th>
+                  <th>Close</th>
+                  <th>Points</th>
+                  <th>Decision</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for hr in rec.hourly_set_calculated %}
+                <tr>
+                  <td>{{ hr.hour|time:"H:i" }}</td>
+                  <td>{{ hr.nifty_open }}</td>
+                  <td>{{ hr.nifty_high }}</td>
+                  <td>{{ hr.nifty_low }}</td>
+                  <td>{{ hr.nifty_close }}</td>
+                  <td class="{% if hr.points >= 0 %}points-positive{% else %}points-negative{% endif %}">
+                {% if hr.points >= 0 %}+{% endif %}{{ hr.points }}
+              </td>
+                  <td class="{% if hr.decision == 'Bullish' %}bullish{% else %}bearish{% endif %}">{{ hr.decision }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7">No hourly data</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+      {% endfor %}
+    </tbody>
+  </table>
+</form>
+
+<!-- Pagination -->
+<div class="pagination">
+  {% if records.has_previous %}
+    <a href="?page={{ records.previous_page_number }}{% if filter_option %}&filter={{ filter_option }}{% endif %}">« Prev</a>
+  {% endif %}
+  {% for num in records.paginator.page_range %}
+    {% if records.number == num %}
+      <span class="current">{{ num }}</span>
+    {% elif num > records.number|add:-3 and num < records.number|add:3 %}
+      <a href="?page={{ num }}{% if filter_option %}&filter={{ filter_option }}{% endif %}">{{ num }}</a>
+    {% endif %}
+  {% endfor %}
+  {% if records.has_next %}
+    <a href="?page={{ records.next_page_number }}{% if filter_option %}&filter={{ filter_option }}{% endif %}">Next »</a>
+  {% endif %}
+</div>
+
+</body>
+</html>
