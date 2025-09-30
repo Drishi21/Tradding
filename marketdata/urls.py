@@ -7,10 +7,8 @@ urlpatterns = [
     path("live_trade_plan/", views.live_trade_plan, name="live_trade_plan"),
     path("trade_dashboard/", views.trade_dashboard, name="trade_dashboard"),
     path("trade_prices_api/", views.trade_prices_api, name="trade_prices_api"),
-    
     path("", views.record_list, name="record_list"),
-    
-     path('accordion/<int:rec_id>/<str:interval>/', views.accordion_view, name='accordion_view'),
+    path('accordion/<int:rec_id>/<str:interval>/', views.accordion_view, name='accordion_view'),
     path("summary_api", views.summary_api, name="summary_api"),
     path("live-nifty/", views.live_nifty_data, name="live_nifty_data"),
     path("news/", views.news_page, name="news_page"),

@@ -46,6 +46,25 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils.timezone import localtime
 from .models import TradePlan, OptionTrade
+
+from django.core.cache import cache
+from django.http import HttpResponse
+from django.shortcuts import render
+from django.core.cache import cache
+from django.shortcuts import render, redirect
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+from django.core.paginator import Paginator
+from django.core.cache import cache
+from datetime import date, datetime, timedelta
+import time
+
+from .models import MarketRecord
+from django.shortcuts import render, redirect
+from django.http import JsonResponse
+from django.core.cache import cache
+from datetime import datetime
+import yfinance as yf
 # ==========================================================
 # Globals
 # ==========================================================
@@ -53,18 +72,12 @@ logger = logging.getLogger(__name__)
 translator = Translator()
 MODEL_FILE = os.path.join(settings.BASE_DIR, "ml_models", "nifty_model.pkl")
 
-# ==========================================================
-# Helpers
-# ==========================================================
-
 def get_decision(record):
     """Return bias (Bullish/Bearish/Neutral) using property or fallback."""
     try:
         return record.calculated_decision
     except Exception:
         return record.decision or "Neutral"
-
-
 
 def annotate_intraday_traps(record, m30_rows, pcr=None):
     """Generate annotations for intraday slots (who got trapped/profited)."""
@@ -103,10 +116,6 @@ def annotate_intraday_traps(record, m30_rows, pcr=None):
         })
     return out
 
-# ==========================================================
-# Option-chain (live NSE fetch)
-# ==========================================================
-
 NSE_OPTION_CHAIN_URL = "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
 
 def _nse_get_json(url, timeout=8):
@@ -137,7 +146,6 @@ def fetch_option_chain_for_strike(strike_price):
     except Exception:
         pass
     return None
-
 
 def build_dynamic_trade_plan(record, option_lot_size=75):
     try:
@@ -199,10 +207,8 @@ def recent_trend_warning(record, lookback=5):
         return f"⚠️ Last {lookback} days DOWN → Avoid fresh Puts, market may rebound."
     return None
 
-
 def lot_size(symbol="NIFTY"):
     return 75 if symbol.upper() == "NIFTY" else 15 if symbol.upper() == "BANKNIFTY" else 50
-
 
 def probability_score(record):
     prob = 50
@@ -219,10 +225,6 @@ def probability_score(record):
     if record.calculated_decision == "Bullish": prob += 5
     elif record.calculated_decision == "Bearish": prob -= 5
     return max(30, min(80, prob))
-
-# ==========================================================
-# Narrative
-# ==========================================================
 
 def build_narrative(record, traps):
     try:
@@ -299,10 +301,6 @@ def generate_detailed_summary_json(record):
         "probability": prob,
     }
 
-# ==========================================================
-# Time-based pattern analysis
-# ==========================================================
-
 def analyze_time_patterns(record, days=40, interval="30m"):
     start_date = record.date - timedelta(days=days)
     qs = MarketRecord.objects.filter(date__gt=start_date, date__lt=record.date, interval=interval)
@@ -344,10 +342,6 @@ def build_time_based_trade_suggestions(record, days=40, interval="30m", top_n=5)
         recs.append({"time":slot,"action":action,"confidence":conf,"samples":st["count"]})
     return sorted(recs,key=lambda x:x["confidence"],reverse=True)[:top_n]
 
-# ==========================================================
-# API Endpoint
-# ==========================================================
-
 def summary_api(request):
     date = request.GET.get("date")
     if not date:
@@ -357,8 +351,6 @@ def summary_api(request):
         return JsonResponse({"error":"No record"}, status=404)
     data = generate_detailed_summary_json(record)
     return JsonResponse(data)
-
-
 
 def yahoo_quote(symbol, label):
     try:
@@ -384,15 +376,6 @@ def live_ticker(request):
     }
     return JsonResponse(data)
 
-# ==============================================================
-# Market Records
-# ==============================================================
-
-
-
-# ---------- Fetch NIFTY history (daily + 1h + 30m) ----------
-
-# ---------- Fetch NIFTY history (daily + 1h + 30m) ----------
 def fetch_nifty_history(
     days=30,
     include_hourly=True,
@@ -521,10 +504,6 @@ def fetch_nifty_history(
         logger.exception("Error fetching nifty history: %s", e)
         return []
 
-# ==============================================================
-# FII/DII
-# ==============================================================
-
 def fetch_fii_dii():
     """Scrape Groww FII/DII data"""
     try:
@@ -625,7 +604,6 @@ def fetch_fii_dii_map():
             logger.warning("Skipping invalid date in FII/DII row: %s", r)
     return out
 
-
 # === NSE Headers ===
 NSE_HEADERS = {
     "User-Agent": "Mozilla/5.0",
@@ -647,7 +625,6 @@ def fetch_nifty_option_chain():
     option_data = data["records"]["data"]
     return underlying, option_data
 
-# === Helper: Live Nifty price ===
 def get_latest_nifty_price():
     try:
         ticker = yf.Ticker("^NSEI")
@@ -660,11 +637,9 @@ def get_latest_nifty_price():
         print(f"⚠️ Error fetching Nifty price: {e}")
         return None
 
-# === Trade Prices API ===
 def trade_prices_api(request):
     latest_price = get_latest_nifty_price()
     pending_options = OptionTrade.objects.filter(status="Pending")
-
     options_data = [
         {
             "id": opt.id,
@@ -677,15 +652,11 @@ def trade_prices_api(request):
         }
         for opt in pending_options
     ]
-
     return JsonResponse({"nifty": latest_price, "options": options_data})
 
-# === Update Trade Status ===
 def update_trade_status():
     active_trades = TradePlan.objects.filter(status="Pending")
     latest_price = get_latest_nifty_price()
-    print(f"🔄 Updating TradePlans with latest_price={latest_price}")
-
     for trade in active_trades:
         if trade.direction == "Long":
             if latest_price >= trade.target:
@@ -706,8 +677,6 @@ def update_trade_status():
         return
 
     active_options = OptionTrade.objects.filter(status="Pending")
-    print(f"🔍 Checking {active_options.count()} pending OptionTrades")
-
     for opt in active_options:
         row = next((r for r in option_data if r.get("strikePrice") == opt.strike), None)
         if not row:
@@ -727,15 +696,11 @@ def update_trade_status():
         opt.ltp = ltp
         opt.save(update_fields=["ltp", "status"])
 
-# === Generate Trade Plan ===
-# === Generate Trade Plan (with real NSE option chain) ===
 def generate_trade_plan(price):
     direction = "Long" if price % 2 == 0 else "Short"
     stop_loss = price - 25 if direction == "Long" else price + 25
     target = price + 60 if direction == "Long" else price - 60
     confidence = 75
-
-    # ✅ Create main trade plan
     plan = TradePlan.objects.create(
         level=price,
         direction=direction,
@@ -749,20 +714,12 @@ def generate_trade_plan(price):
         option_sentiment="Bearish",
         signals={"dummy": "example"}
     )
-    print(f"✅ Created TradePlan {plan.id} → {direction} @ {price}")
-
-    # ✅ Fetch NSE Option Chain
     try:
         underlying, option_data = fetch_nifty_option_chain()
     except Exception as e:
-        print(f"⚠️ NSE fetch failed in generate_trade_plan: {e}")
         return plan
-
-    # ✅ Pick nearest ATM strike
     atm = int(round(price / 50) * 50)
     strikes = [atm, atm + 50]
-
-    # ✅ Map direction → Option Type
     opt_type = "PE" if direction == "Short" else "CE"   # NSE data uses CE/PE
     model_type = "PUT" if direction == "Short" else "CALL"  # For DB consistency
 
@@ -777,7 +734,6 @@ def generate_trade_plan(price):
             print(f"⚠️ No LTP found for strike {strike} {opt_type}")
             continue
 
-        # ✅ SL = 30% below entry, Target = 70% above entry
         stop_loss_opt = round(ltp * 0.7, 2)
         target_opt = round(ltp * 1.7, 2)
 
@@ -790,11 +746,8 @@ def generate_trade_plan(price):
             target=target_opt,
         )
         print(f"📌 Created OptionTrade {opt.id} {model_type} {strike} → LTP={ltp}, SL={stop_loss_opt}, Target={target_opt}")
-
     return plan
 
-
-# === Live Trade Plan API ===
 def live_trade_plan(request):
     price = get_latest_nifty_price()
     if not price:
@@ -822,8 +775,6 @@ def live_trade_plan(request):
         ]
     })
 
-
-# === Trade Dashboard ===
 def trade_dashboard(request):
     update_trade_status()
     qs = TradePlan.objects.all().order_by("-created_at")
@@ -844,11 +795,6 @@ def trade_dashboard(request):
         "live_price": get_latest_nifty_price(),
         "default_expiry": plans[0].expiry.strftime("%Y-%m-%d") if plans else None
     })
-from django.core.cache import cache
-
-from django.http import JsonResponse
-from django.utils.timezone import localtime
-from django.core.cache import cache
 
 def fetch_option_chain_analysis():
     """
@@ -894,6 +840,7 @@ def fetch_option_chain_analysis():
     except Exception as e:
         print(f"⚠️ Error fetching option chain: {e}")
         return {"chain": [], "support": None, "resistance": None}
+
 def fetch_nifty_option_chain(expiry=None):
     url = f"https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY"
     session = requests.Session()
@@ -907,7 +854,6 @@ def fetch_nifty_option_chain(expiry=None):
         option_data = [row for row in data["records"]["data"] if row["expiryDate"] == expiry]
 
     return underlying, option_data
-
 
 def option_chain_api(request, strike):
     """
@@ -959,9 +905,6 @@ def option_chain_api(request, strike):
         "trend": trend_snapshot,
     })
 
-# ==============================
-# Accordion View (AJAX endpoint)
-# ==============================
 def accordion_view(request, rec_id, interval):
     cache_key = f"accordion:{rec_id}:{interval}"
     html = cache.get(cache_key)
@@ -999,33 +942,10 @@ def accordion_view(request, rec_id, interval):
     cache.set(cache_key, html, timeout=600)  # 10 minutes cache
     return HttpResponse(html)
 
-
-from django.core.cache import cache
-from django.http import HttpResponse
-from django.shortcuts import render
-from django.core.cache import cache
-from django.shortcuts import render, redirect
-from django.http import HttpResponse
-from django.template.loader import render_to_string
-from django.core.paginator import Paginator
-from django.core.cache import cache
-from datetime import date, datetime, timedelta
-import time
-
-from .models import MarketRecord
-from django.shortcuts import render, redirect
-from django.http import JsonResponse
-from django.core.cache import cache
-from datetime import datetime
-import yfinance as yf
-# ==============================
-# Main Record List View
-# ==============================
 def record_list(request):
     # MarketRecord.objects.all().delete()
     # OptionTrade.objects.all().delete()
     # TradePlan.objects.all().delete()
-# === Generate Trade Plan ===
     filter_option = request.GET.get("filter", "all")
     trend_filter = filter_option if filter_option in ["bullish", "bearish", "neutral"] else "all"
     page_number = request.GET.get("page", 1)
@@ -1172,8 +1092,6 @@ def record_list(request):
     cache.set(page_cache_key, response, 600)  # cache full page 10 mins
     return response
 
-
-
 def decide_trend_from_fii_dii(fii_net, dii_net, price_points):
     """
     Decide Bullish/Bearish/Neutral using FII+DII + Price movement
@@ -1317,6 +1235,7 @@ KEYWORDS_POSITIVE = [
     "buy","record high","gain","increase","bullish","surge","growth","rebound",
     "fii buying","rally","strength","positive","upgrade"
 ]
+
 KEYWORDS_NEGATIVE = [
     "sell","drop","fall","bearish","decline","inflation","slowdown","cut","weak",
     "fii selling","downturn","loss","negative","downgrade"
@@ -1478,7 +1397,6 @@ def live_nifty_data(request):
         "volume":int(latest["Volume"])
     })
 
-
 def fii_dii_list(request):
     start_date = request.GET.get("start_date"); end_date = request.GET.get("end_date")
     qs = FiiDiiRecord.objects.all().order_by("-date")
@@ -1511,7 +1429,6 @@ def fii_dii_update(request):
         messages.error(request, f"⚠️ Update failed: {e}")
     return redirect("fii_dii_list")
 
-
 def market_trap_dashboard(request):
     start_date = request.GET.get("start_date"); end_date = request.GET.get("end_date")
     page_number = request.GET.get("page", 1); action = request.GET.get("action")
@@ -1534,7 +1451,6 @@ def market_trap_dashboard(request):
     context = {"trap_results":trap_results,"chart_data":json.dumps(chart_data),
                "start_date":start_date,"end_date":end_date,"page_obj":page_obj}
     return render(request,"marketdata/dashboard.html",context)
-
 
 NSE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
