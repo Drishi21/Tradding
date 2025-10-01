@@ -1,10 +1,10 @@
 # marketdata/views.py
-
 import os
 import math
 import json
 import logging
-from datetime import datetime, date, timedelta, time
+import time
+from datetime import datetime, date, timedelta, time as dt_time
 from collections import defaultdict
 
 import pandas as pd
@@ -20,51 +20,29 @@ import requests
 from requests.adapters import HTTPAdapter, Retry
 
 from django.shortcuts import render, redirect
-from django.utils.timezone import now, make_aware
+from django.utils.timezone import now, make_aware, localtime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.cache import cache_page
 from django.views.decorators.http import require_GET
 from django.core.paginator import Paginator
 from django.template.loader import render_to_string
-from django.http import JsonResponse, HttpResponseBadRequest
+from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest
 from django.conf import settings
 from django.contrib import messages
 from django.db.models import Q, Count
+from django.core.cache import cache
 
-from .models import MarketRecord, MarketNews, FiiDiiRecord, MarketTrap, Prediction
+from .models import (
+    MarketRecord,
+    MarketNews,
+    FiiDiiRecord,
+    MarketTrap,
+    Prediction,
+    TradePlan,
+    OptionTrade,
+)
 from .analysis import analyze_fii_dii, advanced_market_trap_analysis
 
-import requests
-import yfinance as yf
-from requests.adapters import HTTPAdapter, Retry
-from django.http import JsonResponse
-from django.shortcuts import render
-from .models import TradePlan, OptionTrade
-import requests, yfinance as yf
-from requests.adapters import HTTPAdapter, Retry
-from django.http import JsonResponse
-from django.shortcuts import render
-from django.utils.timezone import localtime
-from .models import TradePlan, OptionTrade
-
-from django.core.cache import cache
-from django.http import HttpResponse
-from django.shortcuts import render
-from django.core.cache import cache
-from django.shortcuts import render, redirect
-from django.http import HttpResponse
-from django.template.loader import render_to_string
-from django.core.paginator import Paginator
-from django.core.cache import cache
-from datetime import date, datetime, timedelta
-import time
-
-from .models import MarketRecord
-from django.shortcuts import render, redirect
-from django.http import JsonResponse
-from django.core.cache import cache
-from datetime import datetime
-import yfinance as yf
 # ==========================================================
 # Globals
 # ==========================================================
