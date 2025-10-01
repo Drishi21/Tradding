@@ -24,13 +24,11 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "dashboard",
-    "trades",
     'marketdata',
      "django.contrib.humanize",
      'django_celery_beat',
     'django_celery_results',
       "channels",
-    'accounts',
 ]
 NEWS_API_KEY = "7cf51a5d2cc641429d3d9167e6bfc299"
 STATIC_URL = '/static/'
