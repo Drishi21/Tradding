@@ -300,3 +300,98 @@ class IntradaySlotStats(models.Model):
 
     def __str__(self):
         return f"{self.slot_time} ({self.win_rate}%)"
+# marketdata/models.py
+from django.db import models
+class SniperLevel(models.Model):
+    date = models.DateField(unique=True)
+    close_price = models.FloatField()
+    atm = models.IntegerField()
+    sniper = models.FloatField()
+    upper = models.FloatField()
+    lower = models.FloatField()
+    upper_double = models.FloatField()
+    lower_double = models.FloatField()
+    bias = models.CharField(max_length=20, default="Neutral")  # ✅ NEW
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+
+    class Meta:
+        ordering = ["-date"]
+
+    def __str__(self):
+        return f"{self.date} ATM:{self.atm} Sniper:{self.sniper}"
+# 
+class SniperTrade(models.Model):
+    sniper = models.ForeignKey(SniperLevel, related_name="trades", on_delete=models.CASCADE)
+    side = models.CharField(max_length=4)             # "CE" / "PE"
+    strike = models.IntegerField()
+    entry = models.FloatField()
+    stoploss = models.FloatField()
+    target1 = models.FloatField()
+    target2 = models.FloatField(null=True, blank=True)
+    risk_reward = models.CharField(max_length=32, null=True, blank=True)
+    confidence = models.IntegerField(default=50)     # 0-100
+    note = models.TextField(null=True, blank=True)
+    action = models.CharField(max_length=64, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True) 
+
+    class Meta:
+        ordering = ["-sniper__date", "strike", "side"]
+
+    def __str__(self):
+        return f"{self.side}@{self.strike} ({self.confidence}%)"
+
+class MarketSnapshot(models.Model):
+    """
+    Snapshot captured every N minutes (20m) containing summary metrics and JSON option snapshot.
+    """
+    timestamp = models.DateTimeField()            # when snapshot was taken (timezone-aware)
+    date = models.DateField()                     # trading date (date component)
+    interval_minutes = models.IntegerField(default=20)
+
+    # quick numeric fields
+    nifty_close = models.FloatField(null=True, blank=True)
+    atm = models.IntegerField(null=True, blank=True)
+    sniper = models.FloatField(null=True, blank=True)
+
+    # summary CE/PE PnL numbers (estimates)
+    total_call_profit = models.FloatField(null=True, blank=True)   # hypothetical profit for short/long basket
+    total_put_profit = models.FloatField(null=True, blank=True)
+
+    call_volume = models.BigIntegerField(null=True, blank=True)
+    put_volume = models.BigIntegerField(null=True, blank=True)
+    call_oi = models.BigIntegerField(null=True, blank=True)
+    put_oi = models.BigIntegerField(null=True, blank=True)
+
+    # flags / heuristics
+    trap_flag = models.BooleanField(default=False)    # True if heuristic trap detected
+    trap_note = models.TextField(blank=True, null=True)
+
+    # recommendation: Take / Avoid / Monitor
+    recommendation = models.CharField(max_length=20, default="Monitor")
+
+    # store full raw option chain (small JSON) for later debugging
+    raw_chain = models.JSONField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-timestamp"]
+
+    def __str__(self):
+        return f"Snapshot {self.timestamp.isoformat()} rec={self.recommendation}"
+class MarketSignal(models.Model):
+    snapshot = models.ForeignKey(MarketSnapshot, related_name="signals", on_delete=models.CASCADE)
+    side = models.CharField(max_length=2)  # "CE" / "PE"
+    strike = models.IntegerField()
+    ltp = models.FloatField()
+    oi = models.BigIntegerField(null=True, blank=True)
+    volume = models.BigIntegerField(null=True, blank=True)
+    est_profit = models.FloatField(null=True, blank=True)   # estimated profit if taken now
+    trap = models.BooleanField(default=False)
+    note = models.CharField(max_length=255, blank=True, null=True)
+
+    class Meta:
+        ordering = ["-snapshot__timestamp", "side", "strike"]
+
+    def __str__(self):
+        return f"{self.side}@{self.strike} ({self.snapshot.timestamp:%H:%M})"

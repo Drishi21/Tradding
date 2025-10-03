@@ -17,4 +17,9 @@ urlpatterns = [
     path("fii-dii/", views.fii_dii_list, name="fii_dii_list"),
     path("option-chain/", views.option_chain, name="option_chain"),
     path("ticker/", views.live_ticker, name="live_ticker"),
+    path("sniper-dashboard/", views.sniper_dashboard, name="sniper_dashboard"),
+    path("sniper/", views.sniper_api, name="sniper_api"),
+    path("monitor/", views.market_monitor, name="market_monitor"),
+    path("api/monitor/", views.market_monitor_api, name="market_monitor_api"),
+ path("latest-snapshot-time/", views.latest_snapshot_time, name="latest_snapshot_time"),
 ]

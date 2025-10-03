@@ -6,6 +6,9 @@
   <title>Trade Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
+    body {
+      font-size: 14px;
+    }
     /* Sticky ATM row like Groww */
     .table-warning {
       position: sticky;
@@ -14,8 +17,34 @@
     }
     /* Compact option chain cells */
     #option-chain-table td, #option-chain-table th {
-      padding: 6px;
+      padding: 8px;
       font-size: 13px;
+    }
+    /* Hover effect for cards */
+    .card {
+      border-radius: 12px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.1);
+    }
+    /* Sticky table headers */
+    thead.sticky-top th {
+      background: #f8f9fa;
+      z-index: 3;
+    }
+    /* Buttons spacing */
+    .btn {
+      border-radius: 8px;
+    }
+    /* Mobile adjustments */
+    @media (max-width: 768px) {
+      h3 { font-size: 1.3rem; }
+      .card-body h4, .card-body h3 { font-size: 1.1rem; }
+      .table-responsive { font-size: 12px; }
+      #option-chain-table { font-size: 12px; }
+      .d-flex > * { margin-bottom: 6px; }
     }
   </style>
 </head>
@@ -24,55 +53,55 @@
 <div class="container mt-4">
 
   <!-- Header -->
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h3>📊 Trade Dashboard</h3>
-    <div>
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <h3 class="fw-bold">📊 Trade Dashboard</h3>
+    <div class="d-flex flex-wrap gap-2">
       <!-- Expiry Dropdown -->
-      <select id="expiry-select" class="form-select form-select-sm d-inline w-auto me-2">
+      <select id="expiry-select" class="form-select form-select-sm w-auto">
         {% for exp in expiries %}
         <option value="{{ exp }}" {% if exp == default_expiry %}selected{% endif %}>{{ exp }}</option>
         {% endfor %}
       </select>
-      <button id="manual-refresh" class="btn btn-outline-success btn-sm me-2">🔄 Refresh Price</button>
-      <button id="new-trade" class="btn btn-outline-danger btn-sm me-2">➕ New Trade</button>
+      <button id="manual-refresh" class="btn btn-outline-success btn-sm">🔄 Refresh</button>
+      <button id="new-trade" class="btn btn-outline-danger btn-sm">➕ New Trade</button>
       <a href="{% url 'record_list' %}" class="btn btn-outline-primary btn-sm">⬅ Back</a>
     </div>
   </div>
 
   <!-- Live Price -->
-  <div class="alert alert-info shadow-sm d-flex justify-content-between align-items-center">
+  <div class="alert alert-info shadow-sm d-flex justify-content-between align-items-center flex-wrap">
     <div>📈 <b>Nifty:</b> <span id="live-nifty">{{ live_price }}</span></div>
-    <div class="text-end">
-      ⏱ <small>Last Updated: <span id="last-updated">--:--:--</span></small><br>
-      🔄 <small>Next Refresh: <span id="countdown">30</span>s</small>
+    <div class="text-end small">
+      ⏱ Last Updated: <span id="last-updated">--:--:--</span><br>
+      🔄 Next Refresh: <span id="countdown">30</span>s
     </div>
   </div>
 
   <!-- Summary -->
-  <div class="row text-center mb-4">
-    <div class="col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Total</h6><h4>{{ summary.total }}</h4></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm border-success text-success"><div class="card-body"><h6>✅ Success</h6><h4>{{ summary.success }}</h4></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm border-danger text-danger"><div class="card-body"><h6>❌ Failed</h6><h4>{{ summary.failed }}</h4></div></div></div>
-    <div class="col-md-3"><div class="card shadow-sm border-warning text-warning"><div class="card-body"><h6>⏳ Pending</h6><h4>{{ summary.inprogress }}</h4></div></div></div>
+  <div class="row g-3 mb-4 text-center">
+    <div class="col-6 col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Total</h6><h4>{{ summary.total }}</h4></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-sm border-success text-success"><div class="card-body"><h6>✅ Success</h6><h4>{{ summary.success }}</h4></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-sm border-danger text-danger"><div class="card-body"><h6>❌ Failed</h6><h4>{{ summary.failed }}</h4></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-sm border-warning text-warning"><div class="card-body"><h6>⏳ Pending</h6><h4>{{ summary.inprogress }}</h4></div></div></div>
   </div>
 
-  <!-- Win Rate + Option Chain -->
+  <!-- Win Rate -->
   <div class="card mb-4 shadow-sm text-center">
     <div class="card-body">
       <h5>🏆 Win Rate</h5>
-      <h3 style="color:{% if summary.win_rate >= 60 %}green{% elif summary.win_rate >= 40 %}orange{% else %}red{% endif %}">
+      <h3 class="fw-bold" style="color:{% if summary.win_rate >= 60 %}green{% elif summary.win_rate >= 40 %}orange{% else %}red{% endif %}">
         {{ summary.win_rate }}%
       </h3>
-      <button id="view-option-chain" class="btn btn-outline-dark btn-sm mt-2">📊 View Full Option Chain</button>
+      <button id="view-option-chain" class="btn btn-outline-dark btn-sm mt-2">📊 View Option Chain</button>
     </div>
   </div>
 
-  <!-- Option Chain Container -->
+  <!-- Option Chain -->
   <div class="collapse" id="option-chain-container">
     <div class="card shadow-sm mb-4">
       <div class="card-body">
-        <h5>📌 Option Chain (Expiry: <span id="current-expiry">{{ default_expiry }}</span>)</h5>
-        <div id="option-chain-table">⚡ Click to load option chain...</div>
+        <h5 class="mb-3">📌 Option Chain (Expiry: <span id="current-expiry">{{ default_expiry }}</span>)</h5>
+        <div id="option-chain-table" class="text-muted">⚡ Click to load option chain...</div>
       </div>
     </div>
   </div>
@@ -106,14 +135,14 @@
               </td>
               <td><span class="badge bg-secondary expiry-date" data-expiry="{{ plan.expiry|default:default_expiry }}">{{ plan.expiry|default:default_expiry }}</span></td>
               <td><span id="time-left-{{ plan.id }}">--</span></td>
-              <td><button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#options-{{ plan.id }}">📌 View Options</button></td>
+              <td><button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#options-{{ plan.id }}">📌 View</button></td>
             </tr>
             <!-- Option Trades -->
             <tr>
               <td colspan="11" class="p-0">
                 <div class="collapse option-collapse" id="options-{{ plan.id }}">
                   <div class="card card-body">
-                    <h6 class="mb-2">📌 Suggested Option Trades (Expiry: {{ plan.expiry|default:default_expiry }})</h6>
+                    <h6 class="mb-2">📌 Suggested Options (Expiry: {{ plan.expiry|default:default_expiry }})</h6>
                     <div class="table-responsive">
                       <table class="table table-sm table-bordered mb-2">
                         <thead class="table-light"><tr><th>Strike</th><th>Type</th><th>LTP</th><th>SL</th><th>Target</th><th>Status</th></tr></thead>

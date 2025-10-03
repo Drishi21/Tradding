@@ -301,6 +301,96 @@ tr:hover{background:#edf2ff;}
   color: white;
 }
 
+/* Accordion Wrapper Animation */
+.accordion-wrapper {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease, opacity 0.3s ease;
+  opacity: 0;
+}
+.accordion-wrapper.open {
+  max-height: 600px; /* enough space for rows */
+  opacity: 1;
+}
+
+/* Accordion Body Scroll Area */
+.accordion-body {
+  max-height: 400px;
+  overflow-y: auto;
+  border-radius: 8px;
+  background: #fff;
+  position: relative;
+  --header-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+/* Sticky Header Row */
+.accordion-body table thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.accordion-body table thead th {
+  color: #fff;
+  font-weight: 600;
+  box-shadow: var(--header-shadow);
+  transition: box-shadow 0.25s ease-in-out;
+}
+
+/* Fade Effects */
+.accordion-body::before,
+.accordion-body::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0;
+  height: 20px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 6;
+  transition: opacity 0.25s ease-in-out, transform 0.25s ease-in-out;
+}
+
+/* Top Fade */
+.accordion-body::before {
+  top: 0;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.08), transparent);
+  border-radius: 8px 8px 0 0;
+}
+.accordion-body.has-top-fade::before { opacity: 1; }
+
+/* Bottom Fade */
+.accordion-body::after {
+  bottom: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.08), transparent);
+  border-radius: 0 0 8px 8px;
+  transform: translateY(8px);
+}
+.accordion-body.has-bottom-fade::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Interval-specific Header Colors */
+.accordion-content.hourly thead th {
+  background: linear-gradient(135deg,#5a67d8,#7b2ff7); /* purple */
+}
+.accordion-content.m30 thead th {
+  background: linear-gradient(135deg,#38a169,#2f855a); /* green */
+}
+.accordion-content.m5 thead th {
+  background: linear-gradient(135deg,#f59e0b,#d97706); /* orange */
+}
+.accordion-content.m2 thead th {
+  background: linear-gradient(135deg,#ef4444,#dc2626); /* red */
+}
+
+/* Accordion Toggle Buttons (rotation animation) */
+.btn-toggle {
+  transition: transform 0.3s ease;
+}
+.btn-toggle.active {
+  transform: rotate(90deg);
+}
+
 
 
 </style>
@@ -491,10 +581,14 @@ tr:hover{background:#edf2ff;}
             onclick="event.stopPropagation();toggleExpand('details-{{ rec.id }}')">
      
     🔍</button>
-<button onclick="toggleAccordion('hourly-{{ rec.id }}', this, '{{ rec.id }}', 'hourly')">⏰</button>
-<button onclick="toggleAccordion('m30-{{ rec.id }}', this, '{{ rec.id }}', 'm30')">⏱️</button>
-<button onclick="toggleAccordion('m5-{{ rec.id }}', this, '{{ rec.id }}', 'm5')">⏳</button>
-<button onclick="toggleAccordion('m2-{{ rec.id }}', this, '{{ rec.id }}', 'm2')">⌛</button>
+<button class="btn btn-sm btn-info rounded-circle shadow btn-toggle"
+        onclick="toggleAccordion('hourly-{{ rec.id }}', this, '{{ rec.id }}', 'hourly')">⏰</button>
+<button class="btn btn-sm btn-info rounded-circle shadow btn-toggle"
+        onclick="toggleAccordion('m30-{{ rec.id }}', this, '{{ rec.id }}', 'm30')">⏱️</button>
+<button class="btn btn-sm btn-info rounded-circle shadow btn-toggle"
+        onclick="toggleAccordion('m5-{{ rec.id }}', this, '{{ rec.id }}', 'm5')">⏳</button>
+<button class="btn btn-sm btn-info rounded-circle shadow btn-toggle"
+        onclick="toggleAccordion('m2-{{ rec.id }}', this, '{{ rec.id }}', 'm2')">⌛</button>
 
 
 
@@ -525,17 +619,108 @@ tr:hover{background:#edf2ff;}
           </table>
         </td>
       </tr>
-     <tr id="hourly-{{ rec.id }}" class="accordion-content" style="display:none;">
-  <td colspan="13">⏳ Loading...</td>
+    <!-- Hourly Accordion -->
+<tr id="hourly-{{ rec.id }}" class="accordion-content hourly" style="display:none;">
+  <td colspan="13">
+    <div class="accordion-wrapper">
+      <div class="accordion-body">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Open</th>
+              <th>High</th>
+              <th>Low</th>
+              <th>Close</th>
+              <th>Points</th>
+              <th>Decision</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="7">⏳ Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </td>
 </tr>
-<tr id="m30-{{ rec.id }}" class="accordion-content" style="display:none;">
-  <td colspan="13">⏳ Loading...</td>
+
+<!-- M30 Accordion -->
+<tr id="m30-{{ rec.id }}" class="accordion-content m30" style="display:none;">
+  <td colspan="13">
+    <div class="accordion-wrapper">
+      <div class="accordion-body">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Open</th>
+              <th>High</th>
+              <th>Low</th>
+              <th>Close</th>
+              <th>Points</th>
+              <th>Decision</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="7">⏳ Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </td>
 </tr>
-<tr id="m5-{{ rec.id }}" class="accordion-content" style="display:none;">
-  <td colspan="13">⏳ Loading...</td>
+
+<!-- M5 Accordion -->
+<tr id="m5-{{ rec.id }}" class="accordion-content m5" style="display:none;">
+  <td colspan="13">
+    <div class="accordion-wrapper">
+      <div class="accordion-body">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Open</th>
+              <th>High</th>
+              <th>Low</th>
+              <th>Close</th>
+              <th>Points</th>
+              <th>Decision</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="7">⏳ Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </td>
 </tr>
-<tr id="m2-{{ rec.id }}" class="accordion-content" style="display:none;">
-  <td colspan="13">⏳ Loading...</td>
+
+<!-- M2 Accordion -->
+<tr id="m2-{{ rec.id }}" class="accordion-content m2" style="display:none;">
+  <td colspan="13">
+    <div class="accordion-wrapper">
+      <div class="accordion-body">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Open</th>
+              <th>High</th>
+              <th>Low</th>
+              <th>Close</th>
+              <th>Points</th>
+              <th>Decision</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="7">⏳ Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </td>
 </tr>
 
 
@@ -759,6 +944,80 @@ document.addEventListener("DOMContentLoaded", function() {
       td.innerHTML = "⚠️ Failed to load data";
     });
 }
+function toggleAccordion(id, btn, recId, interval) {
+  const row = document.getElementById(id);
+  const wrapper = row.querySelector(".accordion-wrapper");
+
+  // If already open → close
+  if (wrapper.classList.contains("open")) {
+    wrapper.classList.remove("open");
+    btn.classList.remove("active");
+    return;
+  }
+
+  // Close all other accordions
+  document.querySelectorAll(".accordion-wrapper.open").forEach(w => w.classList.remove("open"));
+  document.querySelectorAll(".btn-toggle.active").forEach(b => b.classList.remove("active"));
+
+  // Ensure row is visible & open this one
+  row.style.display = "table-row";
+  wrapper.classList.add("open");
+  btn.classList.add("active");
+
+  // Load content if not already loaded
+  if (!row.dataset.loaded) {
+    fetch(`/marketdata/accordion/${recId}/${interval}/`)
+      .then(res => res.text())
+      .then(html => {
+        row.querySelector("tbody").innerHTML = html;
+        row.dataset.loaded = "true";
+      })
+      .catch(err => {
+        row.querySelector("tbody").innerHTML =
+          "<tr><td colspan='7'>⚠ Failed to load data</td></tr>";
+      });
+  }
+}
+
+// Hide row completely after collapse animation
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll(".accordion-wrapper").forEach(wrapper => {
+    wrapper.addEventListener("transitionend", () => {
+      if (!wrapper.classList.contains("open")) {
+        wrapper.closest("tr").style.display = "none";
+      }
+    });
+  });
+
+  // Fade + shadow effects
+  document.querySelectorAll(".accordion-body").forEach(body => {
+    const updateEffects = () => {
+      const scrollTop = body.scrollTop;
+      const scrollHeight = body.scrollHeight;
+      const clientHeight = body.clientHeight;
+
+      // Top fade toggle
+      if (scrollTop > 0) body.classList.add("has-top-fade");
+      else body.classList.remove("has-top-fade");
+
+      // Bottom fade toggle
+      if (scrollTop + clientHeight < scrollHeight - 1)
+        body.classList.add("has-bottom-fade");
+      else body.classList.remove("has-bottom-fade");
+
+      // Dynamic shadow
+      const intensity = Math.min(scrollTop / 50, 1);
+      const alpha = 0.15 + (0.25 * intensity);
+      body.style.setProperty(
+        "--header-shadow",
+        `0 4px 10px rgba(0,0,0,${alpha.toFixed(2)})`
+      );
+    };
+
+    updateEffects();
+    body.addEventListener("scroll", updateEffects);
+  });
+});
 
 
 
