@@ -1,0 +1,284 @@
+{% block content %}
+
+<h2 style="font-family:'Inter',sans-serif; margin-bottom:20px;">
+  📡 Market Monitor — Snapshots (Every 20 mins)
+</h2>
+
+<!-- === TRADE DECISION PANEL === -->
+<div id="trade-decision" class="decision-panel neutral">
+  <h3 id="decision-title">⚖ Waiting for snapshot...</h3>
+  <p id="decision-note">The system will update after the latest snapshot is loaded.</p>
+</div>
+
+<!-- === Sticky Bias Summary === -->
+<div class="bias-summary-sticky neutral" id="bias-summary">
+  <div id="dominant-bias">📊 Detecting Market Bias...</div>
+  <div id="bias-text">📊 Calculating bias distribution...</div>
+  <div class="bias-progress" aria-hidden="true">
+    <div class="bar bull-bar"></div>
+    <div class="bar bear-bar"></div>
+    <div class="bar neutral-bar"></div>
+  </div>
+</div>
+
+<!-- === Filters === -->
+<form method="get" style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+  <label>Date:</label>
+  <input type="date" name="date" value="{{ date }}" style="padding:4px; border-radius:6px;">
+
+  <label>Recommendation:</label>
+  <select name="recommendation" style="padding:4px; border-radius:6px;">
+    <option value="">All</option>
+    <option value="Prefer CE" {% if recommendation == "Prefer CE" %}selected{% endif %}>Prefer CE</option>
+    <option value="Prefer PE" {% if recommendation == "Prefer PE" %}selected{% endif %}>Prefer PE</option>
+    <option value="Avoid" {% if recommendation == "Avoid" %}selected{% endif %}>Avoid</option>
+    <option value="Monitor" {% if recommendation == "Monitor" %}selected{% endif %}>Monitor</option>
+  </select>
+
+  <label>Trap:</label>
+  <input type="checkbox" name="trap" value="1" {% if trap %}checked{% endif %}>
+
+  <button type="submit" class="btn-filter">🔍 Filter</button>
+  <a href="{% url 'market_monitor' %}" class="btn-reset">♻ Reset</a>
+</form>
+
+<p style="margin-bottom:15px;">
+  Page auto-refreshes every 20 minutes. 
+  <button id="refreshNow" class="btn-info">🔄 Refresh Now</button>
+</p>
+
+<!-- === SNAPSHOT TABLE === -->
+<table class="snapshot-table">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>ATM</th>
+      <th>Close</th>
+      <th>Calls 💚</th>
+      <th>Puts ❤️</th>
+      <th>Vol (C/P)</th>
+      <th>OI (C/P)</th>
+      <th>Trap</th>
+      <th>Recommendation</th>
+      <th>Signals</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in page_obj %}
+    <tr>
+      <td>{{ s.timestamp|date:"H:i" }}</td>
+      <td>{{ s.atm }}</td>
+      <td>{{ s.nifty_close }}</td>
+      <td style="color:green;">{{ s.total_call_profit }}</td>
+      <td style="color:red;">{{ s.total_put_profit }}</td>
+      <td>{{ s.call_volume }} / {{ s.put_volume }}</td>
+      <td>{{ s.call_oi }} / {{ s.put_oi }}</td>
+      <td>
+        {% if s.trap_flag %}
+          ⚠ {{ s.trap_note }}
+        {% else %}
+          —
+        {% endif %}
+      </td>
+      <td class="rec-cell">
+        {% if "CE" in s.recommendation %}
+          <span class="rec-ce">📈 {{ s.recommendation }}</span>
+        {% elif "PE" in s.recommendation %}
+          <span class="rec-pe">📉 {{ s.recommendation }}</span>
+        {% elif "Avoid" in s.recommendation %}
+          <span class="rec-avoid">🚫 {{ s.recommendation }}</span>
+        {% else %}
+          ⚖ {{ s.recommendation }}
+        {% endif %}
+      </td>
+      <td>
+        <button class="accordion-btn" data-id="{{ s.id }}">📖 Show</button>
+      </td>
+    </tr>
+    <tr class="accordion-content" id="signals-{{ s.id }}" style="display:none">
+      <td colspan="10">
+        <table class="trades-table">
+          <thead>
+            <tr>
+              <th>Side</th><th>Strike</th><th>LTP</th><th>OI</th>
+              <th>Volume</th><th>EstProfit</th><th>Trap</th><th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for sig in s.signals.all %}
+            <tr>
+              <td>{{ sig.side }}</td>
+              <td>{{ sig.strike }}</td>
+              <td>{{ sig.ltp }}</td>
+              <td>{{ sig.oi }}</td>
+              <td>{{ sig.volume }}</td>
+              <td>{{ sig.est_profit }}</td>
+              <td>{% if sig.trap %}⚠ Yes{% else %}No{% endif %}</td>
+              <td>{{ sig.note }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8">⚠ No signals</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- Pagination -->
+<div class="pagination">
+  {% if page_obj.has_previous %}
+    <a href="?page={{ page_obj.previous_page_number }}&date={{ date }}">⬅ Prev</a>
+  {% endif %}
+  Page {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+  {% if page_obj.has_next %}
+    <a href="?page={{ page_obj.next_page_number }}&date={{ date }}">Next ➡</a>
+  {% endif %}
+</div>
+
+<!-- ===== Floating Study Button ===== -->
+<button id="openStudyBtn" class="study-float-btn" title="Open Study Card">📘 Study</button>
+
+<!-- ===== Study Modal ===== -->
+<div id="studyModal" class="modal-root" aria-hidden="true">
+  <div class="modal-backdrop" data-close="true"></div>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="studyTitle">
+    <button class="modal-close" id="closeStudyBtn" aria-label="Close">✕</button>
+    <header><h3 id="studyTitle">📝 Quick Study Card</h3></header>
+    <div class="modal-body">
+      <section class="study-steps">
+        <div class="step pre"><b>Before Market</b> • Note ATM / Upper / Lower</div>
+        <div class="step live"><b>During Market</b> • Price > Upper → CE 📈 • Price < Lower → PE 📉</div>
+        <div class="step rules"><b>Rules</b> • Use SL • Max 1 trade/day • Stay safe</div>
+      </section>
+      <ul id="studyChecklist">
+        <li><input type="checkbox" class="study-item"> Note ATM / Levels</li>
+        <li><input type="checkbox" class="study-item"> Confirm Bias</li>
+        <li><input type="checkbox" class="study-item"> Pick Trade</li>
+        <li><input type="checkbox" class="study-item"> Place SL</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- === Styles (panel + table + modal) === -->
+<style>
+/* Decision Panel */
+.decision-panel{margin-bottom:15px;padding:12px;border-radius:10px;font-weight:600;box-shadow:0 3px 10px rgba(0,0,0,0.1);}
+.decision-panel h3{margin:0 0 6px;font-size:18px;}
+.decision-panel p{margin:0;font-size:14px;}
+.decision-panel.bull{background:#d4f7d4;color:#22543d;border-left:6px solid #38a169;}
+.decision-panel.bear{background:#fed7d7;color:#742a2a;border-left:6px solid #e53e3e;}
+.decision-panel.avoid{background:#fef3c7;color:#92400e;border-left:6px solid #f59e0b;}
+.decision-panel.neutral{background:#edf2f7;color:#2d3748;border-left:6px solid #718096;}
+
+/* Bias summary */
+.bias-summary-sticky{position:sticky;top:0;z-index:1000;padding:12px;margin-bottom:15px;border-radius:8px;font-weight:600;font-size:15px;}
+#dominant-bias{font-size:16px;font-weight:700;margin-bottom:6px;}
+.bias-progress{display:flex;height:10px;margin-top:8px;border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.04);}
+.bull-bar{background:#38a169;width:0%;}.bear-bar{background:#e53e3e;width:0%;}.neutral-bar{background:#a0aec0;width:0%;}
+.bias-summary-sticky.bull{background:#d4f7d4;color:#22543d;}
+.bias-summary-sticky.bear{background:#fed7d7;color:#742a2a;}
+.bias-summary-sticky.neutral{background:#edf2f7;color:#2d3748;}
+
+/* Tables */
+.snapshot-table,.trades-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px;}
+.snapshot-table th,.snapshot-table td,.trades-table th,.trades-table td{border:1px solid #ddd;padding:6px;text-align:center;}
+.snapshot-table thead{background:#2d3748;color:white;}
+.trades-table thead{background:#4a5568;color:white;}
+.rec-ce{background:#d1fae5;color:#065f46;padding:2px 6px;border-radius:6px;font-weight:600;}
+.rec-pe{background:#fee2e2;color:#991b1b;padding:2px 6px;border-radius:6px;font-weight:600;}
+.rec-avoid{background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:6px;font-weight:600;}
+
+/* Buttons */
+.btn-filter{background:#5a67d8;color:white;padding:4px 10px;border:none;border-radius:6px;cursor:pointer;}
+.btn-reset{padding:4px 8px;background:#f56565;color:white;border-radius:6px;text-decoration:none;}
+.btn-info{background:#3182ce;color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;}
+.accordion-btn{background:#4f46e5;color:white;border:none;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:12px;}
+.accordion-content{display:none;}
+
+/* Study modal */
+.study-float-btn{position:fixed;right:18px;bottom:18px;z-index:2000;background:#4f46e5;color:white;border:none;padding:12px;border-radius:12px;}
+.modal-root{display:none;position:fixed;inset:0;z-index:3000;align-items:center;justify-content:center;}
+.modal-root.show{display:flex;}
+.modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,0.5);}
+.modal-panel{position:relative;width:min(600px,95%);background:#fff;border-radius:12px;padding:14px;z-index:2;}
+.modal-close{position:absolute;right:12px;top:12px;background:transparent;border:none;font-size:18px;cursor:pointer;}
+.step{padding:10px;border-radius:8px;margin:6px 0;}
+.step.pre{background:#ecfdf5;border-left:6px solid #10b981;}
+.step.live{background:#eff6ff;border-left:6px solid #3b82f6;}
+.step.rules{background:#fffbeb;border-left:6px solid #f59e0b;}
+.study-remember{margin-top:12px;padding:10px;border-radius:8px;background:#fff7f0;border-left:4px solid #ef4444;color:#7a2b2b;}
+</style>
+
+<!-- === JS === -->
+<script>
+// Accordion
+document.querySelectorAll(".accordion-btn").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    const row=document.getElementById("signals-"+btn.dataset.id);
+    row.style.display=row.style.display==="table-row"?"none":"table-row";
+  });
+});
+
+// Bias summary
+function updateBiasSummary(){
+  let bull=0,bear=0,neutral=0;
+  document.querySelectorAll("td span").forEach(el=>{
+    if(el.classList.contains("rec-ce")) bull++;
+    else if(el.classList.contains("rec-pe")) bear++;
+    else if(el.classList.contains("rec-avoid")) neutral++;
+  });
+  const total=bull+bear+neutral||1;
+  const bullPct=Math.round(bull/total*100),bearPct=Math.round(bear/total*100),neutralPct=100-bullPct-bearPct;
+  let dominant="⚖ Market Bias: Neutral",domClass="neutral";
+  if(bullPct>bearPct&&bullPct>neutralPct){dominant="🔥⬆ Market Bias: Bullish";domClass="bull";}
+  else if(bearPct>bullPct&&bearPct>neutralPct){dominant="⚡⬇ Market Bias: Bearish";domClass="bear";}
+  document.getElementById("dominant-bias").innerText=dominant;
+  document.getElementById("bias-summary").className="bias-summary-sticky "+domClass;
+  document.getElementById("bias-text").innerHTML=`📊 Distribution → 
+   <b style="color:#38a169;">Bullish: ${bullPct}%</b> | 
+   <b style="color:#e53e3e;">Bearish: ${bearPct}%</b> | 
+   <b style="color:#4a5568;">Neutral: ${neutralPct}%</b>`;
+  document.querySelector(".bull-bar").style.width=bullPct+"%";
+  document.querySelector(".bear-bar").style.width=bearPct+"%";
+  document.querySelector(".neutral-bar").style.width=neutralPct+"%";
+}
+document.addEventListener("DOMContentLoaded", updateBiasSummary);
+
+// Decision Panel
+function updateDecisionPanel(){
+  const latestCell=document.querySelector("td.rec-cell"); 
+  const panel=document.getElementById("trade-decision");
+  const title=document.getElementById("decision-title");
+  const note=document.getElementById("decision-note");
+  if(!latestCell) return;
+  const rec=latestCell.textContent.trim();
+  if(rec.includes("CE")){panel.className="decision-panel bull";title.innerText="✅ Prefer CE — Bullish";note.innerText="Bias favours Calls. Trade CE above Upper.";}
+  else if(rec.includes("PE")){panel.className="decision-panel bear";title.innerText="✅ Prefer PE — Bearish";note.innerText="Bias favours Puts. Trade PE below Lower.";}
+  else if(rec.includes("Avoid")){panel.className="decision-panel avoid";title.innerText="⚠ Avoid Trades";note.innerText="Trap detected. Stay out.";}
+  else{panel.className="decision-panel neutral";title.innerText="⚖ Neutral — Stay Out";note.innerText="Range bound market. Avoid trades.";}
+}
+document.addEventListener("DOMContentLoaded", updateDecisionPanel);
+
+// Auto refresh
+setTimeout(()=>location.reload(),20*60*1000);
+document.getElementById("refreshNow").addEventListener("click",()=>location.reload());
+
+// Study modal
+const studyModal=document.getElementById("studyModal");
+document.getElementById("openStudyBtn").addEventListener("click",()=>studyModal.classList.add("show"));
+document.getElementById("closeStudyBtn").addEventListener("click",()=>studyModal.classList.remove("show"));
+document.querySelectorAll(".modal-backdrop").forEach(b=>b.addEventListener("click",()=>studyModal.classList.remove("show")));
+
+// Checklist persistence
+const checklistKey="sniper_study_checklist_v1";
+function saveChecklist(){localStorage.setItem(checklistKey,JSON.stringify([...document.querySelectorAll("#studyChecklist .study-item")].map(cb=>cb.checked)));}
+function loadChecklist(){try{JSON.parse(localStorage.getItem(checklistKey)||"[]").forEach((v,i)=>{document.querySelectorAll("#studyChecklist .study-item")[i].checked=v;});}catch(e){}}
+document.addEventListener("DOMContentLoaded", loadChecklist);
+document.querySelectorAll("#studyChecklist .study-item").forEach(cb=>cb.addEventListener("change",saveChecklist));
+</script>
+
+{% endblock %}

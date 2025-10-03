@@ -1,0 +1,555 @@
+{% block content %}
+
+<h2 style="font-family:'Inter',sans-serif; margin-bottom:20px;">
+  📊 Sniper Theory Dashboard (Last {{ days }} Days)
+</h2>
+
+
+<!-- === Filters === -->
+<form method="get" style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+  <label>Days:</label>
+  <input type="number" name="days" value="{{ days }}" style="width:70px; padding:4px; border-radius:6px;">
+
+  <label>Search:</label>
+  <input type="text" name="search" value="{{ search }}" style="padding:4px; border-radius:6px;">
+
+  <label>Side:</label>
+  <select name="side" style="padding:4px; border-radius:6px;">
+    <option value="">All</option>
+    <option value="CE" {% if side_filter == "CE" %}selected{% endif %}>CE</option>
+    <option value="PE" {% if side_filter == "PE" %}selected{% endif %}>PE</option>
+  </select>
+
+  <label>Min Confidence:</label>
+  <input type="number" name="min_conf" value="{{ min_conf }}" style="width:70px; padding:4px; border-radius:6px;">
+
+  <button type="submit" class="btn-filter">🔍 Filter</button>
+  <a href="{% url 'sniper_dashboard' %}" class="btn-reset">♻ Reset</a>
+</form>
+
+<!-- === Manual Update Buttons === -->
+<div style="margin-bottom:20px; display:flex; gap:10px; flex-wrap:wrap;">
+  <form method="post" action="{% url 'sniper_dashboard' %}">
+    {% csrf_token %}
+    <button type="submit" name="update_sniper" class="btn btn-success">🔄 Update Today’s Sniper</button>
+  </form>
+  <form method="post" action="{% url 'sniper_dashboard' %}">
+    {% csrf_token %}
+    <button type="submit" name="update_30days" class="btn btn-info">📅 Update Last 30 Days</button>
+  </form>
+
+  <!-- Dark mode toggle -->
+  <button id="toggleDark" class="btn" style="margin-left:auto;">🌙 Toggle Dark</button>
+</div>
+
+<!-- === Sticky Bias Summary === -->
+<div class="bias-summary-sticky neutral" id="bias-summary">
+  <div id="dominant-bias">📊 Detecting Market Bias...</div>
+  <div id="bias-text">📊 Calculating bias distribution...</div>
+  <div class="bias-progress" aria-hidden="true">
+    <div class="bar bull-bar"></div>
+    <div class="bar bear-bar"></div>
+    <div class="bar neutral-bar"></div>
+  </div>
+</div>
+<!-- === LIVE SNAPSHOT PANEL === -->
+<div class="snapshot-panel">
+  <h3>📡 Live Market Snapshots (Last 10)</h3>
+  <table class="snapshot-table">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Nifty</th>
+        <th>ATM</th>
+        <th>Calls 💚</th>
+        <th>Puts ❤️</th>
+        <th>Trap?</th>
+        <th>Recommendation</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for snap in snapshots %}
+      <tr>
+        <td>{{ snap.timestamp|date:"H:i" }}</td>
+        <td>{{ snap.nifty_close }}</td>
+        <td>{{ snap.atm }}</td>
+        <td style="color:green;">{{ snap.total_call_profit }}</td>
+        <td style="color:red;">{{ snap.total_put_profit }}</td>
+        <td>
+          {% if snap.trap_flag %}
+            ⚠ {{ snap.trap_note }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td>
+          {% if "CE" in snap.recommendation %}
+            <span class="rec-ce">📈 {{ snap.recommendation }}</span>
+          {% elif "PE" in snap.recommendation %}
+            <span class="rec-pe">📉 {{ snap.recommendation }}</span>
+          {% else %}
+            <span class="rec-avoid">⚖ {{ snap.recommendation }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7">⚠ No snapshots yet</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- === SNIPER CARDS === -->
+<div id="sniper-container">
+{% for s in page_obj %}
+<div class="sniper-card 
+  {% if s.sniper.bias == 'Bullish' %}card-bull
+  {% elif s.sniper.bias == 'Bearish' %}card-bear
+  {% else %}card-neutral{% endif %}
+">
+  <!-- Summary -->
+  <div class="sniper-summary">
+    <div><b>{{ s.sniper.date }}</b></div>
+    <div>📉 Close: <b>{{ s.sniper.close_price }}</b></div>
+    <div>🎯 ATM: <b>{{ s.sniper.atm }}</b></div>
+    <div>🎯 Sniper: <b>{{ s.sniper.sniper }}</b></div>
+    <div style="color:green;">Upper: {{ s.sniper.upper }}</div>
+    <div style="color:red;">Lower: {{ s.sniper.lower }}</div>
+    <div style="color:darkgreen;">Upper x2: {{ s.sniper.upper_double }}</div>
+    <div style="color:darkred;">Lower x2: {{ s.sniper.lower_double }}</div>
+
+    <div>
+      {% if s.sniper.bias == "Bullish" %}
+        <span class="badge bull">📈 Bullish</span>
+      {% elif s.sniper.bias == "Bearish" %}
+        <span class="badge bear">📉 Bearish</span>
+      {% else %}
+        <span class="badge neutral">⚖ Neutral</span>
+      {% endif %}
+    </div>
+
+    <div class="outcome-text">
+       {% if s.sniper.close_price >= s.sniper.upper_double %}
+          🚀 Strong Bullish Breakout
+       {% elif s.sniper.close_price >= s.sniper.upper %}
+          ✅ Bullish Win
+       {% elif s.sniper.close_price <= s.sniper.lower_double %}
+          💥 Strong Bearish Breakdown
+       {% elif s.sniper.close_price <= s.sniper.lower %}
+          ❌ Bearish Win
+       {% else %}
+          ⚖ Range Bound
+       {% endif %}
+    </div>
+
+    <div>
+      <button class="accordion-btn">📖 Show Trades</button>
+    </div>
+  </div>
+
+  <!-- Trades Accordion -->
+  <div class="accordion-content" aria-hidden="true">
+    <table class="trades-table">
+      <thead>
+        <tr>
+          <th>Side</th><th>Strike</th><th>Entry</th><th>SL</th>
+          <th>Target1</th><th>Target2</th><th>R/R</th>
+          <th>Confidence</th><th>Note</th><th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in s.trades %}
+        <tr class="
+            {% if 'Favoured' in t.note %}favoured-row
+            {% elif 'Risky' in t.note %}risky-row
+            {% elif 'Neutral' in t.note %}neutral-row
+            {% else %}safe-row{% endif %}
+            {% if s.sniper.bias == 'Bullish' and t.side == 'CE' %} highlight-bull{% endif %}
+            {% if s.sniper.bias == 'Bearish' and t.side == 'PE' %} highlight-bear{% endif %}
+        ">
+          <td>{{ t.side }}</td>
+          <td>{{ t.strike }}</td>
+          <td>{{ t.entry }}</td>
+          <td>{{ t.stoploss }}</td>
+          <td>{{ t.target1 }}</td>
+          <td>{{ t.target2 }}</td>
+          <td>{{ t.risk_reward }}</td>
+          <td>{{ t.confidence }}%</td>
+          <td>{{ t.note }}</td>
+          <td>
+            {% if t.action %}
+              {% if "Buy" in t.action %}
+                <span class="action-buy">{{ t.action }}</span>
+              {% elif "Avoid" in t.action %}
+                <span class="action-avoid">{{ t.action }}</span>
+              {% else %}
+                <span class="action-range">{{ t.action }}</span>
+              {% endif %}
+            {% else %}
+              <span class="action-range">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="10">⚠ No trades for this day</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+</div>
+
+<!-- Pagination -->
+<div class="pagination">
+  {% if page_obj.has_previous %}
+    <a href="?page={{ page_obj.previous_page_number }}&days={{ days }}&search={{ search }}&side={{ side_filter }}&min_conf={{ min_conf }}">⬅ Prev</a>
+  {% endif %}
+  <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}
+    <a href="?page={{ page_obj.next_page_number }}&days={{ days }}&search={{ search }}&side={{ side_filter }}&min_conf={{ min_conf }}">Next ➡</a>
+  {% endif %}
+</div>
+
+<!-- ===== Floating Study Button ===== -->
+<button id="openStudyBtn" class="study-float-btn" title="Open Study Card">📘 Study</button>
+
+<!-- ===== Study Modal (pure CSS/JS modal) ===== -->
+<div id="studyModal" class="modal-root" aria-hidden="true">
+  <div class="modal-backdrop" data-close="true"></div>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="studyTitle">
+    <button class="modal-close" id="closeStudyBtn" aria-label="Close">✕</button>
+    <header style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <h3 id="studyTitle">📝 Sniper Theory — Quick Study Card</h3>
+        <small style="color:#555">Checklist & quick rules (saved in browser)</small>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="printStudy" class="btn">🖨 Print</button>
+        <button id="toggleStudyDark" class="btn">🌓 Dark</button>
+      </div>
+    </header>
+
+    <div class="modal-body">
+      <section class="study-steps">
+        <div class="step pre">
+          <b>Before Market</b>
+          <div>• Note ATM / Upper / Lower from dashboard.<br>• Mark them on your notepad.</div>
+        </div>
+        <div class="step live">
+          <b>During Market</b>
+          <div>• Price > Upper → Favoured CE trades 📈<br>• Price < Lower → Favoured PE trades 📉<br>• Between = ⚖ Avoid new trades</div>
+        </div>
+        <div class="step rules">
+          <b>Trade Rules</b>
+          <div>• Use stoploss always. • Size conservatively. • Max 1 trade/day (or per system rule).</div>
+        </div>
+      </section>
+
+      <section style="margin-top:12px">
+        <b>✅ Daily Checklist</b>
+        <ul id="studyChecklist">
+          <li><label><input type="checkbox" class="study-item"> Note ATM / Upper / Lower</label></li>
+          <li><label><input type="checkbox" class="study-item"> Confirm dashboard bias</label></li>
+          <li><label><input type="checkbox" class="study-item"> Pick favoured trade (CE/PE)</label></li>
+          <li><label><input type="checkbox" class="study-item"> Place stoploss immediately</label></li>
+          <li><label><input type="checkbox" class="study-item"> Keep position sizing safe</label></li>
+        </ul>
+        <div style="margin-top:8px;display:flex;gap:8px;">
+          <button id="checkAll" class="btn">Check All</button>
+          <button id="clearChecklist" class="btn">Clear</button>
+        </div>
+      </section>
+
+      <div class="study-remember">⚠ Remember: if unsure → skip. Discipline > action.</div>
+    </div>
+
+    <footer class="modal-footer">
+      <small>Shortcut: press <b>S</b> to open study card. Notes are stored locally in your browser.</small>
+    </footer>
+  </div>
+</div>
+
+<!-- === Styles === -->
+<style>
+/* Basic page */
+body { font-family:'Inter',sans-serif; background:#f8f9fa; color:#111; }
+:root { --card-bg:#fff; --muted:#718096; --accent:#1f2937; }
+
+/* Bias Summary */
+.bias-summary-sticky {
+  position:sticky; top:0; z-index:1000;
+  padding:12px; margin-bottom:20px;
+  border-radius:8px; font-weight:600;
+  font-size:15px; transition:background 0.4s;
+}
+#dominant-bias { font-size:16px; font-weight:700; margin-bottom:6px; }
+.bias-progress { display:flex; height:10px; margin-top:8px; border-radius:6px; overflow:hidden; background:rgba(0,0,0,0.04); }
+.bias-progress .bar { height:100%; transition:width 0.5s ease; }
+
+/* Bars */
+.bull-bar { background:#38a169; width:0%; }
+.bear-bar { background:#e53e3e; width:0%; }
+.neutral-bar { background:#a0aec0; width:0%; }
+.bias-summary-sticky.bull { background:#d4f7d4; color:#22543d; }
+.bias-summary-sticky.bear { background:#fed7d7; color:#742a2a; }
+.bias-summary-sticky.neutral { background:#edf2f7; color:#2d3748; }
+
+
+/* Cards */
+.sniper-card { background:var(--card-bg); border-radius:12px; padding:14px; margin-bottom:16px;
+  box-shadow:0 6px 18px rgba(16,24,40,0.06); transition:transform .12s ease; border-left:6px solid transparent; }
+.sniper-card:hover { transform: translateY(-3px); }
+.sniper-summary { display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:10px; font-size:14px; font-weight:500; align-items:center; }
+
+/* Outcome text */
+.outcome-text { font-weight:600; }
+
+/* Trade table */
+.trades-table { width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
+.trades-table th, .trades-table td { padding:8px; border:1px solid #e6e6e6; text-align:center; }
+.trades-table thead { background:#3f3f46; color:white; }
+
+/* Row colors */
+.favoured-row { background:#e6ffed; }
+.risky-row { background:#fff3cd; }
+.neutral-row { background:#edf2f7; }
+.safe-row { background:#ffffff; }
+.highlight-bull { border-left:4px solid #16a34a; }
+.highlight-bear { border-left:4px solid #dc2626; }
+
+/* Action chips */
+.action-buy { background:#c6f6d5; color:#22543d; padding:4px 8px; border-radius:8px; font-weight:700; }
+.action-avoid { background:#fed7d7; color:#742a2a; padding:4px 8px; border-radius:8px; font-weight:700; }
+.action-range { background:#e2e8f0; color:#2d3748; padding:4px 8px; border-radius:8px; font-weight:700; }
+
+
+.badge { padding:4px 8px; border-radius:6px; font-weight:600; font-size:12px; }
+.badge.bull { background:#d4f7d4; color:#22543d; }
+.badge.bear { background:#fed7d7; color:#742a2a; }
+.badge.neutral { background:#e2e8f0; color:#2d3748; }
+
+.accordion-btn { background:#007bff; color:white; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; font-size:13px; }
+.accordion-btn:hover { background:#0056b3; }
+.accordion-content { display:none; margin-top:10px; }
+
+.pagination { margin-top:15px; text-align:center; font-weight:600; }
+.pagination a { margin:0 8px; text-decoration:none; color:#007bff; }
+.pagination a:hover { text-decoration:underline; }
+
+.btn { padding:6px 12px; border:none; border-radius:6px; cursor:pointer; font-weight:600; }
+.btn-success { background:#38a169; color:white; }
+.btn-info { background:#3182ce; color:white; }
+.btn-filter { background:#5a67d8; color:white; border:none; padding:4px 10px; border-radius:6px; }
+.btn-reset { padding:4px 8px; background:#f56565; color:white; border-radius:6px; text-decoration:none; }
+
+.card-bull { border-left:4px solid #38a169; }
+.card-bear { border-left:4px solid #e53e3e; }
+.card-neutral { border-left:4px solid #718096; }
+
+/* Floating study button */
+.study-float-btn {
+  position:fixed; right:18px; bottom:18px; z-index:2000;
+  background:linear-gradient(135deg,#6366f1,#4f46e5); color:white; border:none; padding:12px 14px;
+  border-radius:12px; box-shadow:0 8px 26px rgba(79,70,229,0.18); cursor:pointer; font-weight:800;
+}
+
+/* Modal (pure CSS) */
+.modal-root { display:none; position:fixed; inset:0; z-index:3000; align-items:center; justify-content:center; }
+.modal-root.show { display:flex; }
+.modal-backdrop { position:absolute; inset:0; background:rgba(0,0,0,0.5); }
+.modal-panel { position:relative; width:min(980px,95%); background:var(--card-bg); border-radius:12px; padding:14px; z-index:2; box-shadow:0 20px 60px rgba(2,6,23,0.4); }
+.modal-close { position:absolute; right:12px; top:12px; background:transparent; border:none; font-size:18px; cursor:pointer; }
+
+/* Modal body */
+.modal-body { margin-top:12px; max-height:60vh; overflow:auto; padding-right:8px; }
+.study-steps { display:grid; gap:12px; }
+.step { padding:12px; border-radius:8px; }
+.step.pre { background:#ecfdf5; border-left:6px solid #10b981; }
+.step.live { background:#eff6ff; border-left:6px solid #3b82f6; }
+.step.rules { background:#fffbeb; border-left:6px solid #f59e0b; }
+
+.study-remember { margin-top:12px; padding:10px; border-radius:8px; background:#fff7f0; border-left:4px solid #ef4444; color:#7a2b2b; }
+
+/* Study Checklist */
+#studyChecklist { margin-top:8px; padding-left:6px; }
+#studyChecklist li { margin:8px 0; }
+
+/* Dark mode */
+body.dark { background:#0b1220; color:#d1d5db; --card-bg:#0f1724; }
+body.dark .trades-table thead { background:#111827; color:#d1d5db; }
+body.dark .modal-panel { background:#071024; color:#d1d5db; }
+body.dark .badge.neutral { background:#1f2937; color:#e6eef6; }
+
+/* small screens */
+@media (max-width:700px) {
+  .sniper-summary { grid-template-columns: repeat(2, 1fr); }
+}
+.snapshot-panel { margin:20px 0; background:var(--card-bg); padding:12px; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+.snapshot-panel h3 { margin-bottom:10px; font-size:16px; font-weight:700; }
+.snapshot-table { width:100%; border-collapse:collapse; font-size:13px; }
+.snapshot-table th, .snapshot-table td { padding:6px 8px; border:1px solid #ddd; text-align:center; }
+.snapshot-table thead { background:#2d3748; color:#fff; }
+.rec-ce { background:#d1fae5; color:#065f46; padding:2px 6px; border-radius:6px; font-weight:600; }
+.rec-pe { background:#fee2e2; color:#991b1b; padding:2px 6px; border-radius:6px; font-weight:600; }
+.rec-avoid { background:#e5e7eb; color:#111; padding:2px 6px; border-radius:6px; font-weight:600; }
+.daily-plan-card {
+  background: linear-gradient(135deg, #edf2f7, #e2e8f0);
+  border-left: 6px solid #4f46e5;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 18px;
+  font-size: 14px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+.daily-plan-card h3 { margin:0 0 8px; font-size:16px; font-weight:700; color:#1a202c; }
+.daily-plan-card p { margin:4px 0; }
+.daily-plan-card.no-plan { background:#fff5f5; border-left-color:#e53e3e; color:#742a2a; }
+
+</style>
+
+<!-- === JS: accordion, bias summary, study modal, checklist, dark mode === -->
+<script>
+/* ============ ACCORDION (trades) ============ */
+document.querySelectorAll(".accordion-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const card = btn.closest(".sniper-card");
+    const content = card.querySelector(".accordion-content");
+    const isShown = content.style.display === "block";
+    // hide all other accordions (optional)
+    document.querySelectorAll(".accordion-content").forEach(c => c.style.display = "none");
+    content.style.display = isShown ? "none" : "block";
+    content.setAttribute("aria-hidden", isShown ? "true" : "false");
+    // recalc bias if needed (no-op)
+  });
+});
+
+/* ============ BIAS SUMMARY ============ */
+function updateBiasSummary() {
+  let bull = 0, bear = 0, neutral = 0;
+  document.querySelectorAll(".badge").forEach(b => {
+    if (b.classList.contains("bull")) bull++;
+    else if (b.classList.contains("bear")) bear++;
+    else if (b.classList.contains("neutral")) neutral++;
+  });
+
+  const total = bull + bear + neutral || 1;
+  const bullPct = Math.round((bull / total) * 100);
+  const bearPct = Math.round((bear / total) * 100);
+  const neutralPct = 100 - bullPct - bearPct;
+
+  let dominant = "⚖ Market Bias: Neutral", domClass = "neutral";
+  if (bullPct > bearPct && bullPct > neutralPct) {
+    dominant = "🔥⬆ Market Bias: Bullish"; domClass = "bull";
+  } else if (bearPct > bullPct && bearPct > neutralPct) {
+    dominant = "⚡⬇ Market Bias: Bearish"; domClass = "bear";
+  }
+
+  const summary = document.getElementById("bias-summary");
+  const domBias = document.getElementById("dominant-bias");
+
+  if (!summary || !domBias) return;
+  domBias.innerText = dominant;
+  summary.className = "bias-summary-sticky " + domClass;
+
+  const biasText = document.getElementById("bias-text");
+  if (biasText) {
+    biasText.innerHTML =
+      `📊 Distribution → 
+       <b style="color:#38a169;">Bullish: ${bullPct}%</b> | 
+       <b style="color:#e53e3e;">Bearish: ${bearPct}%</b> | 
+       <b style="color:#4a5568;">Neutral: ${neutralPct}%</b>`;
+  }
+
+  const bullBar = document.querySelector(".bull-bar");
+  const bearBar = document.querySelector(".bear-bar");
+  const neutralBar = document.querySelector(".neutral-bar");
+  if (bullBar) bullBar.style.width = bullPct + "%";
+  if (bearBar) bearBar.style.width = bearPct + "%";
+  if (neutralBar) neutralBar.style.width = neutralPct + "%";
+}
+
+/* run on load */
+document.addEventListener("DOMContentLoaded", updateBiasSummary);
+
+/* ============ STUDY MODAL (no bootstrap) ============ */
+const studyModal = document.getElementById("studyModal");
+const openStudyBtn = document.getElementById("openStudyBtn");
+const closeStudyBtn = document.getElementById("closeStudyBtn");
+const printStudyBtn = document.getElementById("printStudy");
+const toggleStudyDark = document.getElementById("toggleStudyDark");
+
+function showStudyModal() {
+  studyModal.classList.add("show");
+  studyModal.setAttribute("aria-hidden", "false");
+}
+function hideStudyModal() {
+  studyModal.classList.remove("show");
+  studyModal.setAttribute("aria-hidden", "true");
+}
+
+openStudyBtn.addEventListener("click", showStudyModal);
+closeStudyBtn.addEventListener("click", hideStudyModal);
+document.querySelectorAll(".modal-backdrop").forEach(b => b.addEventListener("click", hideStudyModal));
+printStudyBtn.addEventListener("click", () => window.print());
+
+toggleStudyDark.addEventListener("click", () => {
+  const panel = document.querySelector(".modal-panel");
+  panel.classList.toggle("dark");
+  // persist preference for modal only - not full site
+});
+
+/* Keyboard S to show study */
+document.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() === "s" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    if (studyModal.classList.contains("show")) hideStudyModal();
+    else showStudyModal();
+  }
+});
+
+/* ============ CHECKLIST (localStorage) ============ */
+const checklistKey = "sniper_study_checklist_v1";
+function saveChecklist() {
+  const items = Array.from(document.querySelectorAll("#studyChecklist .study-item"))
+    .map(cb => cb.checked);
+  localStorage.setItem(checklistKey, JSON.stringify(items));
+}
+function loadChecklist() {
+  const raw = localStorage.getItem(checklistKey);
+  if (!raw) return;
+  try {
+    const arr = JSON.parse(raw);
+    const cbs = Array.from(document.querySelectorAll("#studyChecklist .study-item"));
+    arr.forEach((val, idx) => { if (cbs[idx]) cbs[idx].checked = !!val; });
+  } catch (e) { console.warn("Checklist load failed", e); }
+}
+document.addEventListener("DOMContentLoaded", loadChecklist);
+document.querySelectorAll("#studyChecklist .study-item").forEach(cb => cb.addEventListener("change", saveChecklist));
+document.getElementById("checkAll").addEventListener("click", () => {
+  document.querySelectorAll("#studyChecklist .study-item").forEach(cb => cb.checked = true); saveChecklist();
+});
+document.getElementById("clearChecklist").addEventListener("click", () => {
+  document.querySelectorAll("#studyChecklist .study-item").forEach(cb => cb.checked = false); saveChecklist();
+});
+
+/* ============ DARK MODE (site) ============ */
+const darkKey = "sniper_site_dark_v1";
+const toggleDark = document.getElementById("toggleDark");
+function applyDarkMode(on) {
+  if (on) document.body.classList.add("dark");
+  else document.body.classList.remove("dark");
+  localStorage.setItem(darkKey, on ? "1" : "0");
+}
+toggleDark.addEventListener("click", () => applyDarkMode(!document.body.classList.contains("dark")));
+document.addEventListener("DOMContentLoaded", () => {
+  const saved = localStorage.getItem(darkKey);
+  if (saved === "1") applyDarkMode(true);
+});
+
+/* run bias update also after small delay (in case badges added after render) */
+setTimeout(updateBiasSummary, 250);
+
+</script>
+
+{% endblock %}

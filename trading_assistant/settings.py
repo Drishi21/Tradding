@@ -16,6 +16,15 @@ CELERY_RESULT_BACKEND = 'django-db'
 # Optional timezone config
 CELERY_TIMEZONE = 'Asia/Kolkata'
 
+CRONJOBS = [
+    # generate daily plan at 09:05 AM Mon-Fri
+    ("5 9 * * 1-5", "marketdata.views.generate_daily_plan"),
+    # capture snapshot every 20 minutes Mon-Fri
+    # django-crontab requires cron format with 5 fields, so use "*/20"
+    ("*/20 * * * 1-5", "django.core.management.call_command('capture_market_snapshot')"),
+]
+
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -29,6 +38,7 @@ INSTALLED_APPS = [
      'django_celery_beat',
     'django_celery_results',
       "channels",
+       "django_crontab",
 ]
 NEWS_API_KEY = "7cf51a5d2cc641429d3d9167e6bfc299"
 STATIC_URL = '/static/'

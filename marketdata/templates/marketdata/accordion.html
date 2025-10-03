@@ -1,3 +1,50 @@
+<style>
+  /* Accordion Section Header */
+.accordion-header {
+  font-weight: 700;
+  padding: 10px;
+  color: #fff;
+  border-radius: 8px 8px 0 0;
+  margin-bottom: 6px;
+}
+
+/* Interval color themes */
+.accordion-header.hourly { background: linear-gradient(135deg,#5a67d8,#7b2ff7); }
+.accordion-header.m30    { background: linear-gradient(135deg,#38a169,#2f855a); }
+.accordion-header.m5     { background: linear-gradient(135deg,#f59e0b,#d97706); }
+.accordion-header.m2     { background: linear-gradient(135deg,#ef4444,#dc2626); }
+
+/* Accordion body scroll */
+.accordion-body {
+  max-height: 400px;
+  overflow-y: auto;
+  border-radius: 0 0 8px 8px;
+  background: #fff;
+  position: relative;
+  --header-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+/* Sticky headers */
+.accordion-body table thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.accordion-body table thead th {
+  color: #fff;
+  font-weight: 600;
+  box-shadow: var(--header-shadow);
+  transition: box-shadow 0.25s ease-in-out;
+}
+
+/* Interval-specific sticky header colors */
+.accordion-body table.hourly thead th { background: linear-gradient(135deg,#5a67d8,#7b2ff7); }
+.accordion-body table.m30 thead th    { background: linear-gradient(135deg,#38a169,#2f855a); }
+.accordion-body table.m5 thead th     { background: linear-gradient(135deg,#f59e0b,#d97706); }
+.accordion-body table.m2 thead th     { background: linear-gradient(135deg,#ef4444,#dc2626); }
+
+</style>
+
 <div class="accordion-header {{ interval }}">
   {% if interval == "hourly" %}⏰ Hourly Data{% endif %}
   {% if interval == "m30" %}⏱ 30-Minute Data{% endif %}
@@ -5,44 +52,52 @@
   {% if interval == "m2" %}⌛ 2-Minute Data{% endif %}
 </div>
 
-<table class="{{ interval }}">
-  <thead>
-    <tr>
-      {% if interval == "hourly" %}
-        <th>Hour</th>
-      {% else %}
-        <th>Time</th>
-      {% endif %}
-      <th>Open</th>
-      <th>High</th>
-      <th>Low</th>
-      <th>Close</th>
-      <th>Points</th>
-      <th>Decision</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for row in data %}
-    <tr>
-      <td>{{ row.hour|time:"H:i" }}</td>
-      <td>{{ row.nifty_open }}</td>
-      <td>{{ row.nifty_high }}</td>
-      <td>{{ row.nifty_low }}</td>
-      <td>{{ row.nifty_close }}</td>
-      <td class="{% if row.points >= 0 %}points-positive{% else %}points-negative{% endif %}">
-        {% if row.points >= 0 %}+{% endif %}{{ row.points }}
-      </td>
-      <td class="{% if row.final_decision == 'Bullish' %}bullish
-                 {% elif row.final_decision == 'Bearish' %}bearish
-                 {% else %}neutral{% endif %}">
-        {% if row.final_decision == 'Bullish' %}📈
-        {% elif row.final_decision == 'Bearish' %}📉
-        {% else %}⚖️{% endif %}
-        {{ row.final_decision }}
-      </td>
-    </tr>
-    {% empty %}
-    <tr><td colspan="7">No {{ title }} available</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="accordion-body">
+  <table class="table table-sm {{ interval }}">
+    <thead>
+      <tr>
+        {% if interval == "hourly" %}
+          <th>Hour</th>
+        {% else %}
+          <th>Time</th>
+        {% endif %}
+        <th>Open</th>
+        <th>High</th>
+        <th>Low</th>
+        <th>Close</th>
+        <th>Points</th>
+        <th>Decision</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in data %}
+      <tr>
+        <td>
+          {% if interval == "hourly" %}
+            {{ row.hour|time:"H:i" }}
+          {% else %}
+            {{ row.hour|time:"H:i" }}
+          {% endif %}
+        </td>
+        <td>{{ row.nifty_open }}</td>
+        <td>{{ row.nifty_high }}</td>
+        <td>{{ row.nifty_low }}</td>
+        <td>{{ row.nifty_close }}</td>
+        <td class="{% if row.points >= 0 %}points-positive{% else %}points-negative{% endif %}">
+          {% if row.points >= 0 %}+{% endif %}{{ row.points }}
+        </td>
+        <td class="{% if row.final_decision == 'Bullish' %}bullish
+                   {% elif row.final_decision == 'Bearish' %}bearish
+                   {% else %}neutral{% endif %}">
+          {% if row.final_decision == 'Bullish' %}📈
+          {% elif row.final_decision == 'Bearish' %}📉
+          {% else %}⚖️{% endif %}
+          {{ row.final_decision }}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7">No {{ title }} available</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

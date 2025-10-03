@@ -40,6 +40,8 @@ from .models import (
     Prediction,
     TradePlan,
     OptionTrade,
+    SniperLevel,
+    SniperTrade
 )
 from .analysis import analyze_fii_dii, advanced_market_trap_analysis
 
@@ -893,7 +895,7 @@ def accordion_view(request, rec_id, interval):
     rec = MarketRecord.objects.get(id=rec_id)
 
     if interval == "hourly":
-        data = rec.hourly_set_calculated
+        data = rec.hourly_set_calculated    
         title = "Hourly Data"
     elif interval == "m30":
         data = rec.m30_set_calculated
@@ -920,6 +922,550 @@ def accordion_view(request, rec_id, interval):
     cache.set(cache_key, html, timeout=600)  # 10 minutes cache
     return HttpResponse(html)
 
+def assign_action_simple(rec, sniper, side):
+    """Assigns action using bias & sniper levels"""
+    bias = get_decision(rec)
+    close = rec.nifty_close
+
+    if bias == "Bullish":
+        if side == "CE":
+            return "⚡ CE Buy (Above ATM, Trend Confirmed)" if close >= sniper.atm else "✅ CE Buy (Breakout)"
+        return "🚫 Avoid PE in Bullish"
+
+    elif bias == "Bearish":
+        if side == "PE":
+            return "⚡ PE Buy (Below ATM, Trend Confirmed)" if close <= sniper.atm else "✅ PE Buy (Breakdown)"
+        return "🚫 Avoid CE in Bearish"
+
+    else:
+        return "📉 Range Bound (Avoid)"
+
+def run_update(auto=False):
+    """
+    auto=False → manual update (30 days)
+    auto=True  → only today (if market hours)
+    """
+    from datetime import datetime, date, time
+    import pytz
+
+    ist = pytz.timezone("Asia/Kolkata")
+    now = datetime.now(ist).time()
+
+    if auto:
+        # only update if inside market hours
+        if not (time(9, 15) <= now <= time(15, 25)):
+            return "⏸ Outside market hours"
+        days = 1
+    else:
+        print('vennkat')
+        days = 30   
+
+    nifty_records = fetch_nifty_history(days=days, include_hourly=True, include_30m=True)
+    fii_dii_list = fetch_fii_dii()
+    fii_dii_map = {datetime.strptime(r["date"], "%Y-%m-%d").date(): r for r in fii_dii_list}
+
+    for r in nifty_records:
+        date_val = r["date"]
+        fii_info = fii_dii_map.get(date_val, {})
+
+        if r["interval"] == "1d":
+            existing = MarketRecord.objects.filter(date=date_val, interval="1d").first()
+            pcr_val = fetch_pcr_data() if date_val == date.today() else getattr(existing, "pcr", 0)
+
+            MarketRecord.objects.update_or_create(
+                date=date_val,
+                hour=None,
+                interval="1d",
+                defaults={
+                    "nifty_open": r["open"], "nifty_high": r["high"], "nifty_low": r["low"],
+                    "nifty_close": r["close"], "points": r["points"],
+                    "fii_buy": fii_info.get("fii_buy", 0), "fii_sell": fii_info.get("fii_sell", 0),
+                    "fii_net": fii_info.get("fii_net", 0), "dii_buy": fii_info.get("dii_buy", 0),
+                    "dii_sell": fii_info.get("dii_sell", 0), "dii_net": fii_info.get("dii_net", 0),
+                    "pcr": pcr_val,
+                    "global_markets": "Auto fetch pending",
+                    "important_news": getattr(existing, "important_news", ""),
+                },
+            )
+        else:
+            MarketRecord.objects.update_or_create(
+                date=date_val,
+                hour=r["hour"],
+                interval=r["interval"],
+                defaults={
+                    "nifty_open": r["open"], "nifty_high": r["high"], "nifty_low": r["low"],
+                    "nifty_close": r["close"], "points": r["points"],
+                    "fii_buy": fii_info.get("fii_buy", 0), "fii_sell": fii_info.get("fii_sell", 0),
+                    "fii_net": fii_info.get("fii_net", 0), "dii_buy": fii_info.get("dii_buy", 0),
+                    "dii_sell": fii_info.get("dii_sell", 0), "dii_net": fii_info.get("dii_net", 0),
+                    "pcr": 0,
+                },
+            )
+    return f"✅ Update done ({'today only' if auto else '30 days'})"
+
+def compute_and_store_sniper(record_date=None):
+    from datetime import date
+    today = record_date or date.today()
+
+    rec = MarketRecord.objects.filter(date=today, interval="1d").first()
+    if not rec:
+        return None
+
+    close_price = float(rec.nifty_close)
+    atm = round(close_price / 50) * 50
+    if close_price < atm:
+        atm -= 50
+
+    # === Fetch option chain ===
+    try:
+        _, option_data = fetch_nifty_option_chain()
+    except Exception:
+        return None
+
+    strikes = [atm, atm + 100, atm - 100]
+
+    ce100 = next((float(r.get("CE", {}).get("lastPrice", 0)) for r in option_data if r.get("strikePrice") == atm + 100), 0)
+    pe100 = next((float(r.get("PE", {}).get("lastPrice", 0)) for r in option_data if r.get("strikePrice") == atm - 100), 0)
+    sniper_val = (ce100 + pe100) / 2 if ce100 and pe100 else 50
+
+    # ✅ Compute bias
+    bias = get_decision(rec)  # "Bullish", "Bearish", "Neutral"
+
+    # === Store sniper levels ===
+    sniper_level, _ = SniperLevel.objects.update_or_create(
+        date=today,
+        defaults={
+            "close_price": close_price,
+            "atm": atm,
+            "sniper": sniper_val,
+            # 🔥 Narrower bands with bias-driven breakouts
+            "upper": atm + (sniper_val * 0.5),
+            "lower": atm - (sniper_val * 0.5),
+            "upper_double": atm + sniper_val,
+            "lower_double": atm - sniper_val,
+            "bias": bias,
+        }
+    )
+
+    # === Delete old trades ===
+    SniperTrade.objects.filter(sniper=sniper_level).delete()
+    trades = []
+
+    # Confidence adjustment
+    base_conf = 60
+    if abs(rec.points) > 200:
+        base_conf += 20
+    elif abs(rec.points) > 100:
+        base_conf += 10
+
+    for strike in strikes:
+        row = next((r for r in option_data if r.get("strikePrice") == strike), None)
+        if not row:
+            continue
+
+        for side in ["CE", "PE"]:
+            ltp = float(row.get(side, {}).get("lastPrice", 0))
+            if not ltp:
+                continue
+
+            entry = ltp
+            stoploss = round(entry * 0.7, 2)
+            target1 = round(entry * 1.5, 2)
+            target2 = round(entry * 2.0, 2)
+            rr_ratio = round((target1 - entry) / (entry - stoploss), 2) if (entry - stoploss) > 0 else 1
+
+            # Confidence & note
+            if (bias == "Bullish" and side == "CE") or (bias == "Bearish" and side == "PE"):
+                confidence = base_conf + 15
+                note = f"✅ Favoured {side}@{strike} | Bias={bias}"
+            elif bias == "Neutral":
+                confidence = base_conf
+                note = f"⚖ Neutral {side}@{strike} | Bias=Neutral"
+            else:
+                confidence = base_conf - 15
+                note = f"⚠ Risky {side}@{strike} | Bias={bias}"
+
+            # Action (using bias + breakout)
+            action = assign_action(trade_side=side, sniper=sniper_level, rec=rec, bias=bias)
+
+            trade = SniperTrade.objects.create(
+                sniper=sniper_level,
+                side=side,
+                strike=strike,
+                entry=entry,
+                stoploss=stoploss,
+                target1=target1,
+                target2=target2,
+                risk_reward=f"{rr_ratio} R/R",
+                confidence=confidence,
+                action=action,
+                note=note,
+            )
+            trades.append(trade)
+
+    return {"sniper": sniper_level, "trades": trades}
+
+
+def assign_action(trade_side, sniper, rec, bias):
+    """
+    Decide actionable trade signal based on bias + sniper levels
+    """
+    close = rec.nifty_close
+    action = "⚠ Wait / Neutral"
+
+    if bias == "Bullish":
+        if trade_side == "CE":
+            if close >= sniper.upper_double:
+                action = "🚀 Strong CE Breakout"
+            elif close >= sniper.upper:
+                action = "✅ CE Buy (Breakout)"
+            elif close >= sniper.atm:
+                action = "⚡ CE Buy (Above ATM)"
+        else:
+            action = "🚫 Avoid PE in Bullish"
+
+    elif bias == "Bearish":
+        if trade_side == "PE":
+            if close <= sniper.lower_double:
+                action = "💥 Strong PE Breakdown"
+            elif close <= sniper.lower:
+                action = "✅ PE Buy (Breakdown)"
+            elif close <= sniper.atm:
+                action = "⚡ PE Buy (Below ATM)"
+        else:
+            action = "🚫 Avoid CE in Bearish"
+
+    else:  # Neutral bias
+        if close >= sniper.upper:
+            action = "📈 Neutral Bias Breakout"
+        elif close <= sniper.lower:
+            action = "📉 Neutral Bias Breakdown"
+        else:
+            action = "⚖ Range Bound"
+
+    return action
+
+def update_sniper_last_30days():
+    """Compute Sniper Levels for last 30 calendar days but update only trading days (skip weekends/holidays)."""
+    today = date.today()
+    updated = []
+    for i in range(30):
+        d = today - timedelta(days=i)
+        if d.weekday() >= 5:   # skip Sat/Sun
+            continue
+        res = compute_and_store_sniper(record_date=d)
+        if res:
+            updated.append(str(d))
+    return {"updated_days": updated, "count": len(updated)}
+
+# marketdata/utils.py
+from datetime import datetime, timezone
+import math
+
+def estimate_profit_for_option(entry_price, current_price, position="long", qty=1):
+    """
+    Quick estimate: profit = (current - entry) * qty for long, reversed for short.
+    `position` can be "long" or "short".
+    """
+    if entry_price is None or current_price is None:
+        return 0.0
+    diff = current_price - entry_price
+    if position == "short":
+        diff = -diff
+    return round(diff * qty, 2)
+
+def summarize_chain(option_data, atm):
+    """
+    Summarize option chain into total call/put ltp sums, volumes, oi, and per-strike snapshots.
+    option_data: list of rows (dicts) that contain strikePrice, CE, PE dicts with lastPrice, openInterest, totalTradedVolume
+    """
+    call_sum = 0.0
+    put_sum = 0.0
+    call_vol = 0
+    put_vol = 0
+    call_oi = 0
+    put_oi = 0
+    rows = []
+
+    for r in option_data:
+        strike = r.get("strikePrice")
+        ce = r.get("CE", {}) or {}
+        pe = r.get("PE", {}) or {}
+
+        ce_ltp = float(ce.get("lastPrice") or 0)
+        pe_ltp = float(pe.get("lastPrice") or 0)
+
+        ce_vol = int(ce.get("totalTradedVolume") or 0)
+        pe_vol = int(pe.get("totalTradedVolume") or 0)
+
+        ce_oi = int(ce.get("openInterest") or 0)
+        pe_oi = int(pe.get("openInterest") or 0)
+
+        call_sum += ce_ltp
+        put_sum += pe_ltp
+        call_vol += ce_vol
+        put_vol += pe_vol
+        call_oi += ce_oi
+        put_oi += pe_oi
+
+        rows.append({
+            "strike": strike,
+            "CE": {"ltp": ce_ltp, "vol": ce_vol, "oi": ce_oi},
+            "PE": {"ltp": pe_ltp, "vol": pe_vol, "oi": pe_oi},
+        })
+
+    return {
+        "call_sum": call_sum, "put_sum": put_sum,
+        "call_vol": call_vol, "put_vol": put_vol,
+        "call_oi": call_oi, "put_oi": put_oi,
+        "rows": rows
+    }
+
+def detect_trap(snapshot_summary, previous_summary=None):
+    """
+    Heuristic to detect 'trapping buyers' conditions:
+    - Large spike in call/put volume vs previous snapshot
+    - OI decreasing while price increases (sign of short covering or trap)
+    - Imbalance between call and put ltp sums
+    Returns flag and note.
+    """
+    notes = []
+    flag = False
+
+    # volume spikes
+    if previous_summary:
+        def pct_diff(a, b):
+            if b == 0: return 0
+            return (a - b) / b * 100
+
+        vol_spike_calls = pct_diff(snapshot_summary["call_vol"], previous_summary["call_vol"])
+        vol_spike_puts = pct_diff(snapshot_summary["put_vol"], previous_summary["put_vol"])
+
+        if vol_spike_calls > 50 and snapshot_summary["call_vol"] > snapshot_summary["put_vol"]:
+            flag = True
+            notes.append(f"Call volume spike {vol_spike_calls:.0f}%")
+
+        if vol_spike_puts > 50 and snapshot_summary["put_vol"] > snapshot_summary["call_vol"]:
+            flag = True
+            notes.append(f"Put volume spike {vol_spike_puts:.0f}%")
+
+        # OI drop while price moved up -> possible short squeeze / trap
+        if pct_diff(snapshot_summary["call_oi"], previous_summary["call_oi"]) < -10 and snapshot_summary["call_vol"] > previous_summary["call_vol"]:
+            flag = True
+            notes.append("Call OI fell while call volume rose (possible covering)")
+
+        if pct_diff(snapshot_summary["put_oi"], previous_summary["put_oi"]) < -10 and snapshot_summary["put_vol"] > previous_summary["put_vol"]:
+            flag = True
+            notes.append("Put OI fell while put volume rose (possible covering)")
+    else:
+        # no previous, do simple imbalance check
+        if snapshot_summary["call_vol"] > snapshot_summary["put_vol"] * 1.5:
+            flag = True
+            notes.append("Call volume >> Put volume")
+        if snapshot_summary["put_vol"] > snapshot_summary["call_vol"] * 1.5:
+            flag = True
+            notes.append("Put volume >> Call volume")
+
+    # LTP imbalance
+    if snapshot_summary["call_sum"] > snapshot_summary["put_sum"] * 1.2:
+        notes.append("Call LTP > Put LTP (call strength)")
+    elif snapshot_summary["put_sum"] > snapshot_summary["call_sum"] * 1.2:
+        notes.append("Put LTP > Call LTP (put strength)")
+
+    return flag, "; ".join(notes)
+
+def sniper_dashboard(request):
+    from datetime import date, timedelta
+    snapshots = MarketSnapshot.objects.order_by("-timestamp")[:10]
+    if "update_sniper" in request.POST:
+        compute_and_store_sniper()
+        return redirect("sniper_dashboard")
+
+    elif "update_30days" in request.POST:
+        today = date.today()
+        for i in range(30):
+            d = today - timedelta(days=i)
+            compute_and_store_sniper(record_date=d)
+        return redirect("sniper_dashboard")
+
+    days = int(request.GET.get("days", 30))
+    search = request.GET.get("search", "").strip()
+    side_filter = request.GET.get("side", "")
+    min_conf = request.GET.get("min_conf", "")
+
+    start_date = date.today() - timedelta(days=days)
+    snipers = SniperLevel.objects.filter(date__gte=start_date).order_by("-date")
+    sniper_list = []
+    for s in snipers:
+        rec = MarketRecord.objects.filter(date=s.date, interval="1d").first()
+        trades = s.trades.all()
+
+        # Apply filters
+        if side_filter:
+            trades = trades.filter(side=side_filter)
+        if min_conf:
+            try:
+                trades = trades.filter(confidence__gte=int(min_conf))
+            except:
+                pass
+        if search:
+            trades = trades.filter(Q(note__icontains=search) | Q(strike__icontains=search))
+
+        # ✅ Add action field for each trade
+        trades_with_actions = []
+        for t in trades:
+            t.action = assign_action(
+                trade_side=t.side, 
+                sniper=s, 
+                rec=rec, 
+                bias=s.bias if hasattr(s, "bias") else get_decision(rec)
+            ) if rec else "⚠ No Market Record"
+            trades_with_actions.append(t)
+
+
+        sniper_list.append({"sniper": s, "trades": trades_with_actions})
+
+    paginator = Paginator(sniper_list, 5)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, "marketdata/sniper_dashboard.html", {
+        "page_obj": page_obj,
+        "days": days,
+        "search": search,
+        "side_filter": side_filter,
+        "min_conf": min_conf,
+         "snapshots": snapshots, 
+    })
+
+from datetime import date
+from .models import  SniperLevel
+
+from datetime import date
+from django.http import JsonResponse
+
+def sniper_api(request):
+    date_str = request.GET.get("date")
+    if date_str:
+        try:
+            req_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except Exception:
+            return JsonResponse({"error": "Invalid date"}, status=400)
+    else:
+        req_date = date.today()
+
+    sniper = SniperLevel.objects.filter(date=req_date).first()
+    if not sniper:
+        data = compute_and_store_sniper(record_date=req_date)
+        if not data:
+            return JsonResponse({"error": f"No data for {req_date}"}, status=404)
+        sniper = data["sniper"]
+
+    trades = [
+        {
+            "side": t.side,
+            "strike": t.strike,
+            "entry": t.entry,
+            "stoploss": t.stoploss,
+            "target1": t.target1,
+            "target2": t.target2,
+            "rr": t.risk_reward,
+            "confidence": t.confidence,
+            "note": t.note,
+        }
+        for t in sniper.trades.all()
+    ]
+
+    payload = {
+        "date": str(sniper.date),
+        "close_price": sniper.close_price,
+        "atm": sniper.atm,
+        "sniper": sniper.sniper,
+        "upper": sniper.upper,
+        "lower": sniper.lower,
+        "upper_double": sniper.upper_double,
+        "lower_double": sniper.lower_double,
+        "trades": trades,
+    }
+    return JsonResponse(payload)
+
+from django.shortcuts import render
+from django.core.paginator import Paginator
+from django.http import JsonResponse
+from .models import MarketSnapshot, MarketSignal
+from django.db.models import Q
+from datetime import datetime, date
+
+def market_monitor(request):
+    """
+    Page to view snapshots. Filters: date, recommendation, trap_flag.
+    """
+    qdate = request.GET.get("date")
+    rec_filter = request.GET.get("recommendation", "")
+    trap = request.GET.get("trap", "")
+    page = int(request.GET.get("page", 1))
+
+    snaps = MarketSnapshot.objects.all().order_by("-timestamp")
+    if qdate:
+        try:
+            d = datetime.strptime(qdate, "%Y-%m-%d").date()
+            snaps = snaps.filter(date=d)
+        except:
+            pass
+    if rec_filter:
+        snaps = snaps.filter(recommendation__icontains=rec_filter)
+    if trap.lower() in ("1", "true", "yes"):
+        snaps = snaps.filter(trap_flag=True)
+
+    paginator = Paginator(snaps, 10)
+    page_obj = paginator.get_page(page)
+
+    return render(request, "marketdata/market_monitor.html", {
+        "page_obj": page_obj,
+        "recommendation": rec_filter,
+        "trap": trap,
+        "date": qdate or "",
+    })
+
+def market_monitor_api(request):
+    """
+    Return JSON of latest snapshot (or by date param).
+    """
+    qdate = request.GET.get("date")
+    if qdate:
+        try:
+            d = datetime.strptime(qdate, "%Y-%m-%d").date()
+            snap = MarketSnapshot.objects.filter(date=d).order_by("-timestamp").first()
+        except:
+            return JsonResponse({"error": "invalid date"}, status=400)
+    else:
+        snap = MarketSnapshot.objects.order_by("-timestamp").first()
+    if not snap:
+        return JsonResponse({"error": "no snapshot"}, status=404)
+
+    signals = list(snap.signals.all().values("side", "strike", "ltp", "oi", "volume", "est_profit", "trap", "note"))
+    payload = {
+        "timestamp": snap.timestamp.isoformat(),
+        "date": str(snap.date),
+        "nifty_close": snap.nifty_close,
+        "atm": snap.atm,
+        "sniper": snap.sniper,
+        "totals": {"call_sum": snap.total_call_profit, "put_sum": snap.total_put_profit},
+        "vol_oi": {"call_vol": snap.call_volume, "put_vol": snap.put_volume, "call_oi": snap.call_oi, "put_oi": snap.put_oi},
+        "trap_flag": snap.trap_flag,
+        "trap_note": snap.trap_note,
+        "recommendation": snap.recommendation,
+        "signals": signals
+    }
+    return JsonResponse(payload)
+
+
+def latest_snapshot_time(request):
+    """Return latest MarketSnapshot timestamp as unix epoch (int)."""
+    snap = MarketSnapshot.objects.order_by("-timestamp").first()
+    if snap:
+        return JsonResponse({"last_timestamp": int(snap.timestamp.timestamp())})
+    return JsonResponse({"last_timestamp": 0})
 def record_list(request):
     # MarketRecord.objects.all().delete()
     # OptionTrade.objects.all().delete()
@@ -933,65 +1479,14 @@ def record_list(request):
     cached_response = cache.get(page_cache_key)
     if cached_response:
         return cached_response
-    print(request.method == "POST" and "update_data" in request.POST)
-    # ================= UPDATE DATA ==================
+    # --- Handle updates ---
     if request.method == "POST" and "update_data" in request.POST:
-        print('update')
-        nifty_records = fetch_nifty_history(days=30, include_hourly=True, include_30m=True)
-        fii_dii_list = fetch_fii_dii()
-        fii_dii_map = {datetime.strptime(r["date"], "%Y-%m-%d").date(): r for r in fii_dii_list}
-
-        for r in nifty_records:
-            date_val = r["date"]
-            fii_info = fii_dii_map.get(date_val, {})
-
-            if r["interval"] == "1d":
-                existing = MarketRecord.objects.filter(date=date_val, interval="1d").first()
-                pcr_val = fetch_pcr_data() if date_val == date.today() else getattr(existing, "pcr", 0)
-
-                MarketRecord.objects.update_or_create(
-                    date=date_val,
-                    hour=None,
-                    interval="1d",
-                    defaults={
-                        "nifty_open": r["open"],
-                        "nifty_high": r["high"],
-                        "nifty_low": r["low"],
-                        "nifty_close": r["close"],
-                        "points": r["points"],
-                        "fii_buy": fii_info.get("fii_buy", 0),
-                        "fii_sell": fii_info.get("fii_sell", 0),
-                        "fii_net": fii_info.get("fii_net", 0),
-                        "dii_buy": fii_info.get("dii_buy", 0),
-                        "dii_sell": fii_info.get("dii_sell", 0),
-                        "dii_net": fii_info.get("dii_net", 0),
-                        "pcr": pcr_val,
-                        "global_markets": "Auto fetch pending",
-                        "important_news": getattr(existing, "important_news", ""),
-                    },
-                )
-            else:
-                MarketRecord.objects.update_or_create(
-                    date=date_val,
-                    hour=r["hour"],
-                    interval=r["interval"],
-                    defaults={
-                        "nifty_open": r["open"],
-                        "nifty_high": r["high"],
-                        "nifty_low": r["low"],
-                        "nifty_close": r["close"],
-                        "points": r["points"],
-                        "fii_buy": fii_info.get("fii_buy", 0),
-                        "fii_sell": fii_info.get("fii_sell", 0),
-                        "fii_net": fii_info.get("fii_net", 0),
-                        "dii_buy": fii_info.get("dii_buy", 0),
-                        "dii_sell": fii_info.get("dii_sell", 0),
-                        "dii_net": fii_info.get("dii_net", 0),
-                        "pcr": 0,
-                    },
-                )
+        run_update(auto=False)   # manual → 30 days
         return redirect("record_list")
 
+    if request.GET.get("auto_update") == "1":
+        run_update(auto=True)    # auto → today only
+        
     # ================= FILTER + DISPLAY ==================
     qs = MarketRecord.objects.filter(interval="1d").order_by("-date")
     today = date.today()
