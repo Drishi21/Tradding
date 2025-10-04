@@ -4,7 +4,9 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>NIFTY Market Tracker</title>
+{% comment %} <title>NIFTY Market Tracker</title> {% endcomment %}
+<title>{{ index }} Market Tracker</title>
+
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
@@ -404,7 +406,20 @@ tr:hover{background:#edf2ff;}
   <div class="header">
     <div class="logo">
       <img src="https://img.icons8.com/color/48/000000/stock-market.png" alt="Logo"/>
-      <div class="title">NIFTY Market Tracker</div>
+      {% comment %} <div class="title">NIFTY Market Tracker</div> {% endcomment %}
+      <div class="title">{{ index }} Market Tracker</div>
+    </div>
+      <!-- Index Toggle -->
+    <div class="d-flex gap-2">
+      <a href="{% url 'nifty_list' %}" class="btn {% if index == 'NIFTY' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+        NIFTY
+      </a>
+      <a href="{% url 'sensex_list' %}" class="btn {% if index == 'SENSEX' %}btn-success{% else %}btn-outline-success{% endif %}">
+        SENSEX
+      </a>
+       <a href="{% url 'banknifty_list' %}" class="btn {% if index == 'SENSEX' %}btn-warning{% else %}btn-outline-success{% endif %}">
+        Bank Nifty
+      </a>
     </div>
   </div>
   <a href="{% url 'trade_dashboard' %}" 
@@ -504,7 +519,7 @@ tr:hover{background:#edf2ff;}
         <td>{{ rec.nifty_open }}</td>
         <td>{{ rec.nifty_low }}</td>
         <td>{{ rec.nifty_high }}</td>
-        <td>{{ rec.nifty_close }}</td>  
+        <td>{{ rec.close }}</td>  
         <td class="{% if rec.points >= 0 %}points-positive{% else %}points-negative{% endif %}">
           {% if rec.points >= 0 %}+{% endif %}{{ rec.points }}
         </td>
@@ -785,11 +800,11 @@ function openSummaryModal(date) {
   loadSummary();
   new bootstrap.Modal(document.getElementById('summaryModal')).show();
 }
-
+const currentIndex = "{{ index }}"; 
 function loadSummary() {
   const lang = document.getElementById("langSelect").value;
   document.getElementById("summaryContent").innerHTML = "⏳ Generating summary...";
-  fetch(`/marketdata/summary_api?date=${selectedDate}&lang=${lang}`)
+  fetch(`/marketdata/summary_api?date=${selectedDate}&lang=${lang}&index=${currentIndex}`)
     .then(res => res.json())
     .then(data => renderSummary(data))
     .catch(err => {
