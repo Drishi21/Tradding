@@ -324,13 +324,17 @@ def build_time_based_trade_suggestions(record, days=40, interval="30m", top_n=5)
 
 def summary_api(request):
     date = request.GET.get("date")
+    index = request.GET.get("index", "NIFTY")  # ✅ default NIFTY
     if not date:
-        return JsonResponse({"error":"Missing date"}, status=400)
-    record = MarketRecord.objects.filter(date=date, interval="1d").first()
+        return JsonResponse({"error": "Missing date"}, status=400)
+
+    record = MarketRecord.objects.filter(index=index, date=date, interval="1d").first()
     if not record:
-        return JsonResponse({"error":"No record"}, status=404)
+        return JsonResponse({"error": f"No record found for {index} on {date}"}, status=404)
+
     data = generate_detailed_summary_json(record)
     return JsonResponse(data)
+
 
 def yahoo_quote(symbol, label):
     try:
@@ -939,70 +943,145 @@ def assign_action_simple(rec, sniper, side):
 
     else:
         return "📉 Range Bound (Avoid)"
+def fetch_index_history(
+    index_symbol="^NSEI",   # ^BSESN for Sensex
+    days=30,
+    include_hourly=True,
+    include_30m=True,
+    include_5m=True,
+    include_2m=True,
+    include_live_daily=True,
+):
+    from datetime import datetime, time
+    import pytz
 
-def run_update(auto=False):
-    """
-    auto=False → manual update (30 days)
-    auto=True  → only today (if market hours)
-    """
+    ist = pytz.timezone("Asia/Kolkata")
+    records = []
+    prev_daily_close = None
+
+    try:
+        ticker = yf.Ticker(index_symbol)
+
+        # --- Daily candles ---
+        df_daily = ticker.history(period=f"{days}d", interval="1d")
+        for ts, row in df_daily.iterrows():
+            py_dt = pd.to_datetime(ts).to_pydatetime()
+            close = float(row["Close"])
+            points = 0 if prev_daily_close is None else round(close - prev_daily_close, 2)
+            records.append({
+                "date": py_dt.date(),
+                "hour": None,
+                "interval": "1d",
+                "open": float(row["Open"]),
+                "high": float(row["High"]),
+                "low": float(row["Low"]),
+                "close": close,
+                "points": points,
+            })
+            prev_daily_close = close
+
+        # --- Intraday intervals ---
+        intraday_config = [
+            ("1h", max(7, days), include_hourly),
+            ("30m", max(7, days), include_30m),
+            ("5m", max(5, days), include_5m),
+            ("2m", max(5, days), include_2m),
+        ]
+        intraday_today = []
+
+        for interval, period, enabled in intraday_config:
+            if not enabled:
+                continue
+            df = ticker.history(period=f"{period}d", interval=interval)
+            for ts, row in df.iterrows():
+                ts = pd.to_datetime(ts)
+                py_dt = ts.tz_localize("UTC").astimezone(ist) if ts.tzinfo is None else ts.tz_convert(ist)
+                t = py_dt.time().replace(second=0, microsecond=0)
+                if time(9, 15) <= t <= time(15, 30):
+                    rec = {
+                        "date": py_dt.date(),
+                        "hour": t,
+                        "interval": interval,
+                        "open": float(row["Open"]),
+                        "high": float(row["High"]),
+                        "low": float(row["Low"]),
+                        "close": float(row["Close"]),
+                        "points": 0.0,
+                    }
+                    records.append(rec)
+                    if include_live_daily and interval == "30m":
+                        if py_dt.date() == datetime.now(ist).date():
+                            intraday_today.append(rec)
+
+        # --- Provisional daily candle ---
+        if include_live_daily and intraday_today:
+            today = datetime.now(ist).date()
+            if not any(r["interval"] == "1d" and r["date"] == today for r in records):
+                o = intraday_today[0]["open"]
+                h = max(r["high"] for r in intraday_today)
+                l = min(r["low"] for r in intraday_today)
+                c = intraday_today[-1]["close"]
+                points = c - prev_daily_close if prev_daily_close else 0
+                records.append({
+                    "date": today,
+                    "hour": None,
+                    "interval": "1d",
+                    "open": o,
+                    "high": h,
+                    "low": l,
+                    "close": c,
+                    "points": round(points, 2),
+                })
+
+        records.sort(key=lambda r: (r["date"], r["hour"] or time(0, 0)))
+        return records
+    except Exception as e:
+        logger.exception("Error fetching history: %s", e)
+        return []
+def run_update(auto=False, index="NIFTY"):
     from datetime import datetime, date, time
     import pytz
 
     ist = pytz.timezone("Asia/Kolkata")
     now = datetime.now(ist).time()
 
-    if auto:
-        # only update if inside market hours
-        if not (time(9, 15) <= now <= time(15, 25)):
-            return "⏸ Outside market hours"
-        days = 1
-    else:
-        print('vennkat')
-        days = 30   
+    if auto and not (time(9, 15) <= now <= time(15, 25)):
+        return "⏸ Outside market hours"
 
-    nifty_records = fetch_nifty_history(days=days, include_hourly=True, include_30m=True)
+    days = 1 if auto else 30
+    symbol = {
+    "NIFTY": "^NSEI",
+    "BANKNIFTY": "^NSEBANK",
+    "SENSEX": "^BSESN"
+}.get(index, "^NSEI")  # default to NIFTY
+
+    print('venkat')
+    records = fetch_index_history(symbol, days=days, include_hourly=True, include_30m=True)
     fii_dii_list = fetch_fii_dii()
     fii_dii_map = {datetime.strptime(r["date"], "%Y-%m-%d").date(): r for r in fii_dii_list}
 
-    for r in nifty_records:
+    for r in records:
         date_val = r["date"]
         fii_info = fii_dii_map.get(date_val, {})
 
-        if r["interval"] == "1d":
-            existing = MarketRecord.objects.filter(date=date_val, interval="1d").first()
-            pcr_val = fetch_pcr_data() if date_val == date.today() else getattr(existing, "pcr", 0)
-
-            MarketRecord.objects.update_or_create(
-                date=date_val,
-                hour=None,
-                interval="1d",
-                defaults={
-                    "nifty_open": r["open"], "nifty_high": r["high"], "nifty_low": r["low"],
-                    "nifty_close": r["close"], "points": r["points"],
-                    "fii_buy": fii_info.get("fii_buy", 0), "fii_sell": fii_info.get("fii_sell", 0),
-                    "fii_net": fii_info.get("fii_net", 0), "dii_buy": fii_info.get("dii_buy", 0),
-                    "dii_sell": fii_info.get("dii_sell", 0), "dii_net": fii_info.get("dii_net", 0),
-                    "pcr": pcr_val,
-                    "global_markets": "Auto fetch pending",
-                    "important_news": getattr(existing, "important_news", ""),
-                },
-            )
-        else:
-            MarketRecord.objects.update_or_create(
-                date=date_val,
-                hour=r["hour"],
-                interval=r["interval"],
-                defaults={
-                    "nifty_open": r["open"], "nifty_high": r["high"], "nifty_low": r["low"],
-                    "nifty_close": r["close"], "points": r["points"],
-                    "fii_buy": fii_info.get("fii_buy", 0), "fii_sell": fii_info.get("fii_sell", 0),
-                    "fii_net": fii_info.get("fii_net", 0), "dii_buy": fii_info.get("dii_buy", 0),
-                    "dii_sell": fii_info.get("dii_sell", 0), "dii_net": fii_info.get("dii_net", 0),
-                    "pcr": 0,
-                },
-            )
-    return f"✅ Update done ({'today only' if auto else '30 days'})"
-
+        MarketRecord.objects.update_or_create(
+            index=index,
+            date=date_val,
+            hour=r["hour"],
+            interval=r["interval"],
+            defaults={
+                "open": r["open"], "high": r["high"], "low": r["low"], "close": r["close"],
+                "points": r["points"],
+                "fii_buy": fii_info.get("fii_buy", 0),
+                "fii_sell": fii_info.get("fii_sell", 0),
+                "fii_net": fii_info.get("fii_net", 0),
+                "dii_buy": fii_info.get("dii_buy", 0),
+                "dii_sell": fii_info.get("dii_sell", 0),
+                "dii_net": fii_info.get("dii_net", 0),
+                "pcr": 0,
+            },
+        )
+    return f"✅ Update done for {index} ({'today only' if auto else '30 days'})"
 def compute_and_store_sniper(record_date=None):
     from datetime import date
     today = record_date or date.today()
@@ -1325,7 +1404,7 @@ def sniper_dashboard(request):
 
         sniper_list.append({"sniper": s, "trades": trades_with_actions})
 
-    paginator = Paginator(sniper_list, 5)
+    paginator = Paginator(sniper_list, 30)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
 
@@ -1466,31 +1545,38 @@ def latest_snapshot_time(request):
     if snap:
         return JsonResponse({"last_timestamp": int(snap.timestamp.timestamp())})
     return JsonResponse({"last_timestamp": 0})
-def record_list(request):
-    # MarketRecord.objects.all().delete()
-    # OptionTrade.objects.all().delete()
-    # TradePlan.objects.all().delete()
+# marketdata/views.py
+from django.shortcuts import render, redirect
+from django.core.paginator import Paginator
+from django.core.cache import cache
+from datetime import date, timedelta
+from .models import MarketRecord
+
+def record_list(request, index="NIFTY"):
     filter_option = request.GET.get("filter", "all")
     trend_filter = filter_option if filter_option in ["bullish", "bearish", "neutral"] else "all"
     page_number = request.GET.get("page", 1)
 
-    # ✅ Full-page cache key (page + filter)
-    page_cache_key = f"record_list:{filter_option}:{trend_filter}:{page_number}"
+    # cache key with index
+    page_cache_key = f"record_list:{index}:{filter_option}:{trend_filter}:{page_number}"
     cached_response = cache.get(page_cache_key)
     if cached_response:
         return cached_response
-    # --- Handle updates ---
-    if request.method == "POST" and "update_data" in request.POST:
-        run_update(auto=False)   # manual → 30 days
-        return redirect("record_list")
 
+    # manual update
+    if request.method == "POST" and "update_data" in request.POST:
+        run_update(auto=False, index=index)
+        return redirect(f"{index.lower()}_list")
+
+    # auto update
     if request.GET.get("auto_update") == "1":
-        run_update(auto=True)    # auto → today only
-        
-    # ================= FILTER + DISPLAY ==================
-    qs = MarketRecord.objects.filter(interval="1d").order_by("-date")
+        run_update(auto=True, index=index)
+
+    # === Base queryset ===
+    qs = MarketRecord.objects.filter(interval="1d", index=index).order_by("-date")
     today = date.today()
 
+    # === Date filters ===
     if filter_option == "today":
         qs = qs.filter(date=today)
     elif filter_option == "yesterday":
@@ -1509,6 +1595,7 @@ def record_list(request):
     # --- Convert to list for decision filtering ---
     all_records = list(qs)
 
+    # === Trend filter ===
     if trend_filter == "bullish":
         all_records = [r for r in all_records if r.calculated_decision == "Bullish"]
     elif trend_filter == "bearish":
@@ -1516,21 +1603,24 @@ def record_list(request):
     elif trend_filter == "neutral":
         all_records = [r for r in all_records if r.calculated_decision == "Neutral"]
 
+    # === Pagination ===
     paginator = Paginator(all_records, 25)
     page_obj = paginator.get_page(page_number)
 
+    # === Compute bias and percentages ===
+    # === Compute bias and percentages ===
     for rec in page_obj:
         fii = rec.fii_net or 0
         dii = rec.dii_net or 0
         points = rec.points or 0
         rec.bias = decide_trend_from_fii_dii(fii, dii, points)
         total_abs = abs(fii) + abs(dii)
-        rec.fii_percent = round((abs(fii)/total_abs)*100, 1) if total_abs > 0 else 0
-        rec.dii_percent = round((abs(dii)/total_abs)*100, 1) if total_abs > 0 else 0
+        rec.fii_percent = round((abs(fii) / total_abs) * 100, 1) if total_abs > 0 else 0
+        rec.dii_percent = round((abs(dii) / total_abs) * 100, 1) if total_abs > 0 else 0
         rec.final_decision = rec.calculated_decision
 
-    # --- Summary (cached separately) ---
-    summary_cache_key = f"summary:{filter_option}:{trend_filter}"
+    # === Summary cache ===
+    summary_cache_key = f"summary:{index}:{filter_option}:{trend_filter}"
     summary = cache.get(summary_cache_key)
 
     if not summary:
@@ -1545,15 +1635,16 @@ def record_list(request):
             "bullish_days": bullish_days,
             "bearish_days": bearish_days,
             "neutral_days": neutral_days,
-            "bullish_percent": round((bullish_days/total_days)*100, 1) if total_days else 0,
-            "bearish_percent": round((bearish_days/total_days)*100, 1) if total_days else 0,
-            "neutral_percent": round((neutral_days/total_days)*100, 1) if total_days else 0,
+            "bullish_percent": round((bullish_days / total_days) * 100, 1) if total_days else 0,
+            "bearish_percent": round((bearish_days / total_days) * 100, 1) if total_days else 0,
+            "neutral_percent": round((neutral_days / total_days) * 100, 1) if total_days else 0,
         }
         cache.set(summary_cache_key, summary, 600)
 
     last = all_records[0] if all_records else None
 
     context = {
+        "index": index,   # ✅ dynamic title/header
         "records": page_obj,
         "filter_option": filter_option,
         "trend_filter": trend_filter,
@@ -1562,9 +1653,19 @@ def record_list(request):
     }
 
     response = render(request, "marketdata/record_list.html", context)
-    cache.set(page_cache_key, response, 600)  # cache full page 10 mins
+    cache.set(page_cache_key, response, 600)
     return response
 
+
+# === Wrappers for URL routing ===
+def nifty_list(request):
+    return record_list(request, index="NIFTY")
+
+def sensex_list(request):
+    return record_list(request, index="SENSEX")
+def banknifty_list(request):
+    return record_list(request, index="BANKNIFTY")
+    
 def decide_trend_from_fii_dii(fii_net, dii_net, price_points):
     """
     Decide Bullish/Bearish/Neutral using FII+DII + Price movement
