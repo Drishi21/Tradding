@@ -5,16 +5,22 @@ from django.db import models
 # Market Record Model
 # -------------------------------
 from django.db import models
-
 class MarketRecord(models.Model):
+    INDEX_CHOICES = [
+        ("NIFTY", "Nifty 50"),
+        ("SENSEX", "Sensex 30"),
+        ("BANKNIFTY", "Bank Nifty")
+    ]
+    index = models.CharField(max_length=10, choices=INDEX_CHOICES, default="NIFTY")
     date = models.DateField()
     hour = models.TimeField(blank=True, null=True)
     interval = models.CharField(max_length=10)
 
-    nifty_open = models.DecimalField(max_digits=10, decimal_places=2)
-    nifty_high = models.DecimalField(max_digits=10, decimal_places=2)
-    nifty_low = models.DecimalField(max_digits=10, decimal_places=2)
-    nifty_close = models.DecimalField(max_digits=10, decimal_places=2)
+    # ✅ Generic OHLC fields
+    open = models.DecimalField(max_digits=10, decimal_places=2)
+    high = models.DecimalField(max_digits=10, decimal_places=2)
+    low = models.DecimalField(max_digits=10, decimal_places=2)
+    close = models.DecimalField(max_digits=10, decimal_places=2)
     points = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     fii_buy = models.DecimalField(max_digits=15, decimal_places=2, default=0)
@@ -41,11 +47,11 @@ class MarketRecord(models.Model):
     )
 
     class Meta:
-        unique_together = ("date", "hour", "interval")
+        unique_together = ("index", "date", "hour", "interval")  # ✅ FIXED
         ordering = ["-date", "hour"]
 
     def __str__(self):
-        return f"{self.date} {self.hour or ''} ({self.interval})"
+        return f"{self.index} {self.date} {self.hour or ''} ({self.interval})"
 
     @property
     def calculated_decision(self):
@@ -74,12 +80,19 @@ class MarketRecord(models.Model):
 
     # ---- Internal helper ----
     def _get_interval_records(self, interval):
-        qs = MarketRecord.objects.filter(date=self.date, interval=interval).order_by("hour")
+        qs = MarketRecord.objects.filter(
+            index=self.index,  # ✅ make sure only same index
+            date=self.date,
+            interval=interval
+        ).order_by("hour")
+
         prev_close = None
         for r in qs:
-            r.points = 0 if prev_close is None else round(r.nifty_close - prev_close, 2)
-            prev_close = r.nifty_close
+            r.points = 0 if prev_close is None else round(float(r.close) - float(prev_close), 2)
+            
+            prev_close = r.close
         return qs
+
 # models.py
 import datetime
 from django.db import models
@@ -349,7 +362,7 @@ class MarketSnapshot(models.Model):
     interval_minutes = models.IntegerField(default=20)
 
     # quick numeric fields
-    nifty_close = models.FloatField(null=True, blank=True)
+    close = models.FloatField(null=True, blank=True)
     atm = models.IntegerField(null=True, blank=True)
     sniper = models.FloatField(null=True, blank=True)
 

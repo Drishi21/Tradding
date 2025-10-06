@@ -6,6 +6,7 @@ urlpatterns = [
     path("", include("dashboard.urls")),
     path("marketdata/", include("marketdata.urls")),
     # path("api/accounts/", include("accounts.urls")),
+    path("option-reversals/", include("option_reversal.urls")),
 
 
 

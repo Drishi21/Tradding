@@ -1,0 +1,317 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>📊 Option Reversal Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { transition: background 0.3s, color 0.3s; }
+    .hidden-section { display: none; opacity: 0; transform: scale(0.98); transition: all 0.3s ease; }
+    .visible-section { display: block; opacity: 1; transform: scale(1); transition: all 0.3s ease; }
+  </style>
+</head>
+
+<body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 transition-colors duration-300">
+<div class="container mx-auto p-6 space-y-6">
+
+  <!-- ================= HEADER ================= -->
+  <header class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold flex items-center gap-2">
+      📈 Option Reversal Dashboard
+    </h1>
+    <div class="flex items-center gap-3">
+      <button id="themeToggle" class="bg-gray-200 dark:bg-gray-700 hover:opacity-80 px-3 py-2 rounded-md text-sm flex items-center gap-2">
+        🌙 <span id="themeLabel">Dark</span>
+      </button>
+      <form method="post" action="{% url 'update_reversals' %}">
+        {% csrf_token %}
+        <button class="bg-yellow-400 hover:bg-yellow-500 text-black px-4 py-2 rounded-lg font-semibold shadow-sm">
+          🔁 Update
+        </button>
+      </form>
+    </div>
+  </header>
+
+  <!-- ================= FILTERS ================= -->
+  <section class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md border border-gray-100 dark:border-gray-700">
+    <form method="get" class="flex flex-wrap gap-3 items-center">
+      {{ form.index }} {{ form.interval }} {{ form.momentum_bias }}
+      {{ form.date_from }} {{ form.date_to }}
+      <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded shadow-sm">Filter</button>
+      <a href="{% url 'option_reversal_list' %}" class="bg-gray-400 hover:bg-gray-500 text-white px-3 py-1 rounded shadow-sm">Reset</a>
+    </form>
+  </section>
+
+  <!-- ================= SUMMARY CARDS ================= -->
+  <section class="grid md:grid-cols-5 sm:grid-cols-2 gap-4">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-3 text-center border-t-4 border-blue-400">
+      <h4 class="text-xs text-gray-500">Total</h4>
+      <p class="text-xl font-semibold">{{ summary.total }}</p>
+    </div>
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-3 text-center border-t-4 border-green-500">
+      <h4 class="text-xs text-gray-500">Bullish</h4>
+      <p class="text-xl font-semibold text-green-600">{{ summary.bullish }}</p>
+    </div>
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-3 text-center border-t-4 border-red-500">
+      <h4 class="text-xs text-gray-500">Bearish</h4>
+      <p class="text-xl font-semibold text-red-600">{{ summary.bearish }}</p>
+    </div>
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-3 text-center border-t-4 border-yellow-400">
+      <h4 class="text-xs text-gray-500">Avg Days</h4>
+      <p class="text-xl font-semibold text-yellow-700">{{ summary.avg_days }}</p>
+    </div>
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-3 text-center border-t-4 border-indigo-400">
+      <h4 class="text-xs text-gray-500">Total Δ</h4>
+      <p class="text-xl font-semibold text-indigo-700">{{ summary.total_change }}</p>
+    </div>
+  </section>
+
+  <!-- ================= CONFLUENCE BOX ================= -->
+  {% if confluence_signal %}
+  <section class="rounded-xl p-5 shadow-md border-l-8 
+      {% if confluence_signal.color == 'green' %}border-green-500 bg-green-50 dark:bg-green-900
+      {% elif confluence_signal.color == 'red' %}border-red-500 bg-red-50 dark:bg-red-900
+      {% else %}border-gray-400 bg-gray-50 dark:bg-gray-800{% endif %}">
+    <h3 class="font-semibold text-lg mb-1">{{ confluence_signal.label }}</h3>
+    <p class="text-sm text-gray-700 dark:text-gray-300">{{ confluence_signal.desc }}</p>
+    <p class="text-sm font-medium mt-2 text-gray-900 dark:text-gray-200">{{ confluence_signal.plan }}</p>
+  </section>
+  {% endif %}
+
+  <!-- ================= PIVOT LEVELS ================= -->
+  {% if pivot_daily %}
+  <section class="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-md border border-gray-100 dark:border-gray-700">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="font-semibold text-lg flex items-center gap-2">
+        🧭 Pivot Levels (<span id="pivotModeLabel">Daily</span>) — {{ index }}
+      </h3>
+      <button id="togglePivotMode"
+        class="bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs px-3 py-1 rounded transition shadow-sm dark:bg-blue-900 dark:text-blue-200">
+        🗓 Switch Mode
+      </button>
+    </div>
+
+    <div class="grid grid-cols-3 sm:grid-cols-6 gap-3 text-sm mb-2">
+      <div>R3: <b id="R3Val">-</b></div>
+      <div>R2: <b id="R2Val">-</b></div>
+      <div>R1: <b id="R1Val">-</b></div>
+      <div>P: <b id="PVal">-</b></div>
+      <div>S1: <b id="S1Val">-</b></div>
+      <div>S2: <b id="S2Val">-</b></div>
+      <div>S3: <b id="S3Val">-</b></div>
+    </div>
+
+    <div class="flex items-center gap-2 mt-3">
+      <span id="sentimentBadge" class="px-2 py-1 rounded text-xs font-medium text-white bg-gray-400">Neutral</span>
+      <p id="pivotHint" class="text-sm text-gray-700 dark:text-gray-300"></p>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- ================= EXPANDABLE HEATMAP ================= -->
+  {% if conf_dates %}
+  <section class="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6">
+    <div class="flex justify-between items-center">
+      <h3 class="text-lg font-semibold">🔥 Confidence Heatmap + Trend ({{ index }})</h3>
+      <button id="expandHeatmapBtn" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 text-xs px-3 py-1 rounded dark:bg-indigo-900 dark:text-indigo-200">
+        ➕ Show Heatmap
+      </button>
+    </div>
+
+    <div id="heatmapSection" class="hidden-section mt-5">
+      <canvas id="heatmapChart" height="250"></canvas>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">
+        🟢 Bullish · 🔴 Bearish · 🔵 Momentum Line · 🟣 Δ Change Strength
+      </p>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- ================= REVERSALS TABLE ================= -->
+  <section class="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-x-auto border border-gray-100 dark:border-gray-700">
+    <table class="min-w-full border-collapse">
+      <thead class="bg-gray-800 text-white">
+        <tr>
+          <th class="px-3 py-2 text-left">Date</th>
+          <th class="px-3 py-2">Index</th>
+          <th class="px-3 py-2">Trend</th>
+          <th class="px-3 py-2">Bias</th>
+          <th class="px-3 py-2">Change</th>
+          <th class="px-3 py-2">Days</th>
+          <th class="px-3 py-2">Remarks</th>
+        </tr>
+      </thead>
+      <tbody class="text-sm">
+        {% for r in reversals %}
+        <tr class="border-b {% if r.momentum_bias == 'BUY_CE' %}bg-green-50 dark:bg-green-900{% elif r.momentum_bias == 'BUY_PE' %}bg-red-50 dark:bg-red-900{% else %}bg-gray-50 dark:bg-gray-800{% endif %}">
+          <td class="px-3 py-2">{{ r.reversal_date|date:"d M Y" }}</td>
+          <td class="px-3 py-2">{{ r.index }}</td>
+          <td class="px-3 py-2 font-semibold {% if r.to_trend == 'Bullish' %}text-green-600{% else %}text-red-600{% endif %}">
+            {{ r.from_trend }} → {{ r.to_trend }}
+          </td>
+          <td class="px-3 py-2">
+            {% if r.momentum_bias == 'BUY_CE' %}
+              <span class="bg-green-500 text-white px-2 py-1 rounded text-xs">BUY CE</span>
+            {% elif r.momentum_bias == 'BUY_PE' %}
+              <span class="bg-red-500 text-white px-2 py-1 rounded text-xs">BUY PE</span>
+            {% else %}
+              <span class="bg-gray-400 text-white px-2 py-1 rounded text-xs">Neutral</span>
+            {% endif %}
+          </td>
+          <td class="px-3 py-2">{{ r.new_change }}</td>
+          <td class="px-3 py-2">{{ r.new_streak_days }}</td>
+          <td class="px-3 py-2">{{ r.remarks }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="7" class="text-center py-6 text-gray-500">No reversals found.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+<!-- ================= JS (FINAL & CLEAN VERSION) ================= -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  /* ==================== 🌙 DARK MODE ==================== */
+  const html = document.documentElement;
+  const themeToggle = document.getElementById("themeToggle");
+  const themeLabel = document.getElementById("themeLabel");
+
+  // Load theme from localStorage
+  if (localStorage.getItem("theme") === "dark") {
+    html.classList.add("dark");
+    themeLabel.textContent = "Light";
+  }
+
+  // Toggle theme
+  themeToggle?.addEventListener("click", () => {
+    html.classList.toggle("dark");
+    const dark = html.classList.contains("dark");
+    localStorage.setItem("theme", dark ? "dark" : "light");
+    themeLabel.textContent = dark ? "Light" : "Dark";
+  });
+
+
+  /* ==================== 🧭 PIVOT MODE TOGGLE ==================== */
+  const daily = JSON.parse(`{{ pivot_daily|default:"null"|escapejs }}`);
+  const weekly = JSON.parse(`{{ pivot_weekly|default:"null"|escapejs }}`);
+  const hourly = JSON.parse(`{{ pivot_hourly|default:"null"|escapejs }}`);
+  const togglePivot = document.getElementById("togglePivotMode");
+  let pivotMode = "daily";
+
+  const updateSentimentBadge = (sentiment) => {
+    const badge = document.getElementById("sentimentBadge");
+    if (!badge) return;
+    let color = "bg-gray-400";
+    if (sentiment.includes("Bullish")) color = "bg-green-500";
+    else if (sentiment.includes("Bearish")) color = "bg-red-500";
+    badge.className = `px-2 py-1 rounded text-xs font-medium text-white ${color}`;
+    badge.textContent = sentiment;
+  };
+
+  const updatePivotDisplay = (pivot) => {
+    if (!pivot) return;
+    ["R3","R2","R1","P","S1","S2","S3"].forEach(k => {
+      const el = document.getElementById(k + "Val");
+      if (el) el.textContent = pivot[k] ?? "-";
+    });
+    document.getElementById("pivotHint").textContent = pivot.hint ?? "";
+    updateSentimentBadge(pivot.sentiment || "Neutral");
+  };
+
+  if (daily) updatePivotDisplay(daily);
+
+  togglePivot?.addEventListener("click", () => {
+    pivotMode = pivotMode === "daily" ? "weekly" : pivotMode === "weekly" ? "hourly" : "daily";
+    const pivot = pivotMode === "daily" ? daily : pivotMode === "weekly" ? weekly : hourly;
+    document.getElementById("pivotModeLabel").textContent =
+      pivotMode.charAt(0).toUpperCase() + pivotMode.slice(1);
+    updatePivotDisplay(pivot || {});
+  });
+
+
+  /* ==================== 🔥 EXPANDABLE HEATMAP ==================== */
+  const expandBtn = document.getElementById("expandHeatmapBtn");
+  const heatmapSection = document.getElementById("heatmapSection");
+  let chartInstance = null;
+
+  expandBtn?.addEventListener("click", () => {
+    if (heatmapSection.classList.contains("hidden-section")) {
+      // Expand
+      heatmapSection.classList.replace("hidden-section", "visible-section");
+      expandBtn.textContent = "➖ Hide Heatmap";
+      if (!chartInstance) initHeatmap();
+    } else {
+      // Collapse
+      heatmapSection.classList.replace("visible-section", "hidden-section");
+      expandBtn.textContent = "➕ Show Heatmap";
+    }
+  });
+
+
+  /* ==================== 📈 INIT HEATMAP ==================== */
+  function initHeatmap() {
+    const ctx = document.getElementById("heatmapChart");
+    if (!ctx) return;
+
+    const dates = JSON.parse(`{{ conf_dates|escapejs }}`);
+    const vals = JSON.parse(`{{ conf_values|escapejs }}`);
+    const colors = JSON.parse(`{{ conf_colors|escapejs }}`);
+    const delta = vals.map(v => v * 0.6);
+
+    chartInstance = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: dates,
+        datasets: [
+          { type: "bar", data: vals, backgroundColor: colors, borderRadius: 6, barThickness: 22 },
+          { type: "line", data: vals, borderColor: "rgba(59,130,246,0.9)", borderWidth: 2, tension: 0.4, fill: false, pointRadius: 2 },
+          { type: "line", data: delta, borderColor: "rgba(168,85,247,0.7)", borderDash: [5,5], borderWidth: 2, fill: false, pointRadius: 0 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (ctx) => "📅 " + ctx[0].label,
+              label: (ctx) => {
+                const v = ctx.raw;
+                let sentiment = "⚪ Neutral";
+                if (v >= 3) sentiment = "🟢 Strong Bullish";
+                else if (v >= 1) sentiment = "🟡 Mild Bullish";
+                else if (v <= -3) sentiment = "🔴 Strong Bearish";
+                else if (v <= -1) sentiment = "🟠 Mild Bearish";
+                return `${sentiment} — Δ ${v.toFixed(2)}`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            min: -3.5,
+            max: 3.5,
+            grid: { color: html.classList.contains("dark") ? "#374151" : "#e5e7eb" },
+            ticks: { color: html.classList.contains("dark") ? "#d1d5db" : "#374151" }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: html.classList.contains("dark") ? "#d1d5db" : "#374151" }
+          }
+        }
+      }
+    });
+  }
+
+}); // DOM Ready End
+</script>
+
+</body>
+</html>

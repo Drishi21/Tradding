@@ -100,10 +100,10 @@ def consolidated_record_list(request):
                         hour=None,
                         interval="1d",
                         defaults={
-                            "nifty_open": r["open"],
-                            "nifty_high": r["high"],
+                            "open": r["open"],
+                            "high": r["high"],
                             "nifty_low": r["low"],
-                            "nifty_close": r["close"],
+                            "close": r["close"],
                             "points": r["points"],
                             "fii_buy": fii_info.get("fii_buy", 0),
                             "fii_sell": fii_info.get("fii_sell", 0),

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ index }} Trade Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { font-size: 14px; }
+    .table-warning { position: sticky; top: 40px; z-index: 2; }
+    #option-chain-table td, #option-chain-table th { padding: 8px; font-size: 13px; }
+    .card { border-radius: 12px; transition: transform 0.2s, box-shadow 0.2s; }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.1); }
+    thead.sticky-top th { background: #f8f9fa; z-index: 3; }
+    .btn { border-radius: 8px; }
+    .index-btn.active { background-color: #0d6efd; color: white; }
+
+    /* === Sentiment Styles === */
+    .sentiment-bullish { color: #0f9d58; background: #e6f9ee; border-radius: 8px; padding: 6px 12px; display: inline-block; }
+    .sentiment-bearish { color: #d93025; background: #fdeaea; border-radius: 8px; padding: 6px 12px; display: inline-block; }
+    .sentiment-neutral { color: #f4b400; background: #fff8e1; border-radius: 8px; padding: 6px 12px; display: inline-block; }
+
+    @media (max-width: 768px) {
+      h3 { font-size: 1.3rem; }
+      .card-body h4, .card-body h3 { font-size: 1.1rem; }
+      #option-chain-table { font-size: 12px; }
+      .table-responsive { font-size: 12px; }
+    }
+  </style>
+</head>
+<body class="bg-light">
+
+<div class="container mt-4">
+
+  <!-- ====== INDEX SELECTOR ====== -->
+  <div class="d-flex flex-wrap justify-content-center gap-2 mb-4">
+    <a href="{% url 'trade_dashboard' 'NIFTY' %}" class="btn btn-outline-primary index-btn {% if index == 'NIFTY' %}active{% endif %}">NIFTY</a>
+    <a href="{% url 'trade_dashboard' 'BANKNIFTY' %}" class="btn btn-outline-primary index-btn {% if index == 'BANKNIFTY' %}active{% endif %}">BANKNIFTY</a>
+    <a href="{% url 'trade_dashboard' 'SENSEX' %}" class="btn btn-outline-primary index-btn {% if index == 'SENSEX' %}active{% endif %}">SENSEX</a>
+  </div>
+
+  <!-- ====== HEADER ====== -->
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <h3 class="fw-bold">📊 {{ index }} Trade Dashboard</h3>
+    <div class="d-flex flex-wrap gap-2">
+      <select id="expiry-select" class="form-select form-select-sm w-auto">
+        {% for exp in expiries %}
+          <option value="{{ exp }}" {% if exp == default_expiry %}selected{% endif %}>{{ exp }}</option>
+        {% endfor %}
+      </select>
+      <button id="manual-refresh" class="btn btn-outline-success btn-sm">🔄 Refresh</button>
+      <button id="new-trade" class="btn btn-outline-danger btn-sm">➕ New Trade</button>
+      <a href="{% url 'record_list' %}" class="btn btn-outline-secondary btn-sm">⬅ Back</a>
+    </div>
+  </div>
+
+  <!-- ====== LIVE PRICE ====== -->
+  <div class="alert alert-info shadow-sm d-flex justify-content-between align-items-center flex-wrap">
+    <div>📈 <b>{{ index }}:</b> <span id="live-price">{{ live_price }}</span></div>
+    <div class="text-end small">
+      ⏱ Last Updated: <span id="last-updated">--:--:--</span><br>
+      🔄 Next Refresh: <span id="countdown">30</span>s
+    </div>
+  </div>
+
+  <!-- ====== SUMMARY ====== -->
+  <div class="row g-3 mb-4 text-center">
+    <div class="col-6 col-md-3"><div class="card shadow-sm"><div class="card-body"><h6>Total</h6><h4>{{ summary.total }}</h4></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-sm border-success text-success"><div class="card-body"><h6>✅ Success</h6><h4>{{ summary.success }}</h4></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-sm border-danger text-danger"><div class="card-body"><h6>❌ Failed</h6><h4>{{ summary.failed }}</h4></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-sm border-warning text-warning"><div class="card-body"><h6>⏳ Pending</h6><h4>{{ summary.inprogress }}</h4></div></div></div>
+  </div>
+
+  <!-- ====== WIN RATE ====== -->
+  <div class="card mb-4 shadow-sm text-center">
+    <div class="card-body">
+      <h5>🏆 Win Rate</h5>
+      <h3 class="fw-bold" style="color:{% if summary.win_rate >= 60 %}green{% elif summary.win_rate >= 40 %}orange{% else %}red{% endif %}">
+        {{ summary.win_rate }}%
+      </h3>
+      <button id="view-option-chain" class="btn btn-outline-dark btn-sm mt-2">📊 View Option Chain</button>
+    </div>
+  </div>
+
+  <!-- ====== OPTION CHAIN ====== -->
+  <div class="collapse" id="option-chain-container">
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h5 class="mb-3">📌 Option Chain ({{ index }}) – Expiry: <span id="current-expiry">{{ default_expiry }}</span></h5>
+        <div id="option-chain-table" class="text-muted">⚡ Click to load option chain...</div>
+        <div id="market-sentiment" class="text-center mt-3 fw-bold"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== TRADE HISTORY ====== -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="mb-3">📑 Trade History</h5>
+      <div class="table-responsive" style="max-height:600px; overflow-y:auto;">
+        <table class="table table-hover table-striped align-middle">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>Time</th><th>Price</th><th>Direction</th><th>Entry</th><th>SL</th><th>Target</th>
+              <th>Confidence</th><th>Status</th><th>Expiry</th><th>Time Left</th><th>Options</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for plan in plans %}
+            <tr class="{% if plan.direction == 'Short' %}table-danger{% else %}table-success{% endif %}">
+              <td>{{ plan.created_at|date:"d M Y, H:i" }}</td>
+              <td><b>{{ plan.level }}</b></td>
+              <td style="color:{% if plan.direction == 'Long' %}green{% else %}red{% endif %}">{{ plan.direction }}</td>
+              <td>{{ plan.entry_price }}</td><td>{{ plan.stop_loss }}</td><td>{{ plan.target }}</td>
+              <td><span style="color:{% if plan.confidence >= 70 %}green{% elif plan.confidence >= 40 %}orange{% else %}red{% endif %}">{{ plan.confidence }}%</span></td>
+              <td>
+                {% if plan.status == "Hit Target" %}<span class="badge bg-success">🎯</span>
+                {% elif plan.status == "Stop Loss" %}<span class="badge bg-danger">❌</span>
+                {% else %}<span class="badge bg-warning text-dark">⏳</span>{% endif %}
+              </td>
+              <td><span class="badge bg-secondary expiry-date" data-expiry="{{ plan.expiry }}">{{ plan.expiry }}</span></td>
+              <td><span id="time-left-{{ plan.id }}">--</span></td>
+              <td><button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#options-{{ plan.id }}">📌 View</button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== SCRIPTS ====== -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const INDEX = "{{ index|default:'NIFTY' }}";
+let refreshInterval = 30, countdown = refreshInterval;
+
+// Auto-refresh counter
+setInterval(() => {
+  document.getElementById("countdown").innerText = countdown;
+  if (countdown <= 0) { refreshTradePrices(); countdown = refreshInterval; }
+  countdown--;
+}, 1000);
+
+// === Refresh Prices ===
+function refreshTradePrices() {
+  fetch(`/trade/trade_prices_api/${INDEX}/`)
+    .then(res => res.json())
+    .then(data => {
+      document.getElementById("live-price").innerText = data.nifty;
+      document.getElementById("last-updated").innerText = new Date().toLocaleTimeString("en-IN",{hour12:false});
+    });
+}
+document.getElementById("manual-refresh").addEventListener("click", () => { refreshTradePrices(); countdown = refreshInterval; });
+
+// === Create New Trade ===
+document.getElementById("new-trade").addEventListener("click", () => {
+  fetch(`/trade/live_plan/${INDEX}/`)
+    .then(res => res.json())
+    .then(data => { alert(`✅ New ${INDEX} Trade: ${data.direction} @ ${data.price}`); location.reload(); })
+    .catch(err => alert("⚠️ Failed to create trade: " + err));
+});
+
+// === Expiry Countdown ===
+function updateExpiryCountdown(){
+  document.querySelectorAll(".expiry-date").forEach(el => {
+    const expiry = new Date(el.dataset.expiry + "T15:30:00+05:30"), now = new Date(), diff = expiry - now;
+    const planId = el.closest("tr").querySelector("button").dataset.bsTarget.split("-")[1];
+    const span = document.getElementById("time-left-" + planId);
+    if(diff > 0) span.innerText = Math.floor(diff/36e5)+"h "+Math.floor((diff%36e5)/6e4)+"m";
+    else span.innerText = "Expired";
+  });
+}
+setInterval(updateExpiryCountdown,60000);updateExpiryCountdown();
+
+// === Option Chain Loader + Sentiment ===
+document.getElementById("view-option-chain").addEventListener("click", () => {
+  const live = parseInt(document.getElementById("live-price").innerText || 0);
+  const atm = Math.round(live / 50) * 50;
+  const container = document.getElementById("option-chain-container");
+  const bs = new bootstrap.Collapse(container, { toggle: true });
+
+  fetch(`/trade/option_chain/${atm}/?index=${INDEX}`)
+    .then(res => res.json())
+    .then(data => {
+      let html = `<div class="table-responsive"><table class="table table-sm table-bordered text-center">
+        <thead class="table-light"><tr><th>Call OI</th><th>Call LTP</th><th>Strike</th><th>Put LTP</th><th>Put OI</th></tr></thead><tbody>`;
+      let totalCallOI = 0, totalPutOI = 0;
+      const trendArrow = (trend, val) => trend === "up" ? `${val} ⬆️` : trend === "down" ? `${val} ⬇️` : `${val} ➖`;
+
+      data.snapshot.forEach(r => {
+        totalCallOI += r.call_oi || 0; totalPutOI += r.put_oi || 0;
+        const tr = data.trend[r.strike] || {};
+        const cls = r.strike === data.atm ? "table-warning" :
+                    r.strike === data.support ? "table-success" :
+                    r.strike === data.resistance ? "table-danger" : "";
+        html += `<tr class="${cls}">
+          <td>${trendArrow(tr.call_oi_trend, r.call_oi)}</td>
+          <td>₹${r.call_ltp}</td>
+          <td><b>${r.strike}</b></td>
+          <td>₹${r.put_ltp}</td>
+          <td>${trendArrow(tr.put_oi_trend, r.put_oi)}</td>
+        </tr>`;
+      });
+      html += `</tbody></table></div>
+        <div>🟢 <b>Support:</b> ${data.support||'--'} | 🔴 <b>Resistance:</b> ${data.resistance||'--'} | 🟡 <b>ATM:</b> ${data.atm||'--'}</div>`;
+      document.getElementById("option-chain-table").innerHTML = html;
+
+      // === Market Sentiment ===
+      const ratio = totalPutOI / (totalCallOI || 1);
+      let sentimentClass = "sentiment-neutral", sentimentText = "⚖️ Neutral — Balanced OI Activity";
+      if (ratio > 1.2) { sentimentClass = "sentiment-bullish"; sentimentText = "📈 Bullish Bias — Strong Put Writing!"; }
+      else if (ratio < 0.8) { sentimentClass = "sentiment-bearish"; sentimentText = "📉 Bearish Bias — Strong Call Writing!"; }
+      document.getElementById("market-sentiment").innerHTML = `<div class="${sentimentClass}">${sentimentText}</div>`;
+    })
+    .catch(() => {
+      document.getElementById("option-chain-table").innerHTML = "<div class='text-danger'>⚠️ Failed to load option chain</div>";
+    });
+});
+</script>
+</body>
+</html>

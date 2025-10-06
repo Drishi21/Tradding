@@ -16,10 +16,10 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('date', models.DateField()),
-                ('nifty_open', models.DecimalField(decimal_places=2, max_digits=10)),
-                ('nifty_high', models.DecimalField(decimal_places=2, max_digits=10)),
+                ('open', models.DecimalField(decimal_places=2, max_digits=10)),
+                ('high', models.DecimalField(decimal_places=2, max_digits=10)),
                 ('nifty_low', models.DecimalField(decimal_places=2, max_digits=10)),
-                ('nifty_close', models.DecimalField(decimal_places=2, max_digits=10)),
+                ('close', models.DecimalField(decimal_places=2, max_digits=10)),
                 ('points', models.IntegerField(help_text='e.g. +100 or -100')),
                 ('fii', models.DecimalField(decimal_places=2, help_text='FII activity', max_digits=15)),
                 ('dii', models.DecimalField(decimal_places=2, help_text='DII activity', max_digits=15)),

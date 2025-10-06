@@ -516,9 +516,9 @@ tr:hover{background:#edf2ff;}
       <tr>
         <td>{{ forloop.counter0|add:records.start_index }}</td>
         <td>{{ rec.date|date:"D, M d, Y" }}</td>
-        <td>{{ rec.nifty_open }}</td>
-        <td>{{ rec.nifty_low }}</td>
-        <td>{{ rec.nifty_high }}</td>
+        <td>{{ rec.open }}</td>
+        <td>{{ rec.low }}</td>
+        <td>{{ rec.high }}</td>
         <td>{{ rec.close }}</td>  
         <td class="{% if rec.points >= 0 %}points-positive{% else %}points-negative{% endif %}">
           {% if rec.points >= 0 %}+{% endif %}{{ rec.points }}

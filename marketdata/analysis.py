@@ -126,7 +126,7 @@ def analyze_fii_dii(qs=None, window=ROLL_WINDOW):
         prev = None
         if i > 0:
             prev = market_map.get(sorted_dates[i-1])
-        prev_close_map[d] = float(prev.nifty_close) if prev else None
+        prev_close_map[d] = float(prev.close) if prev else None
 
     for _, r in df.iterrows():
         dt = r['date'].date()
@@ -136,13 +136,13 @@ def analyze_fii_dii(qs=None, window=ROLL_WINDOW):
 
         if market:
             try:
-                intraday_change = float(market.nifty_close) - float(market.nifty_open)
+                intraday_change = float(market.close) - float(market.open)
             except Exception:
                 intraday_change = None
 
             prev_close = prev_close_map.get(dt)
             if prev_close is not None:
-                prev_close_change = float(market.nifty_close) - prev_close
+                prev_close_change = float(market.close) - prev_close
 
         total_z = float(r['total_z'])
         fii_z = float(r['fii_z'])
@@ -157,7 +157,7 @@ def analyze_fii_dii(qs=None, window=ROLL_WINDOW):
                 matched = True
             elif signal in ("StrongBearish", "Bearish") and intraday_change < 0:
                 matched = True
-            elif signal == "Neutral" and abs(intraday_change) < 0.05 * (float(market.nifty_open) or 1):
+            elif signal == "Neutral" and abs(intraday_change) < 0.05 * (float(market.open) or 1):
                 matched = True
             else:
                 matched = False
@@ -169,7 +169,7 @@ def analyze_fii_dii(qs=None, window=ROLL_WINDOW):
             else:
                 matched = False
 
-        underlying_price = float(market.nifty_close) if market else None
+        underlying_price = float(market.close) if market else None
         suggestion = generate_option_plan(signal, underlying_price, conviction_z=total_z)
 
         out[str(dt)] = {
@@ -238,21 +238,21 @@ def advanced_market_trap_analysis(start_date=None, end_date=None):
         prev_rec = MarketRecord.objects.filter(date__lt=rec.date).order_by('-date').first()
         if prev_rec and fd:
             # Convert Decimals to float for calculations
-            nifty_close = float(rec.nifty_close)
-            prev_close = float(prev_rec.nifty_close)
+            close = float(rec.close)
+            prev_close = float(prev_rec.close)
 
-            if nifty_close < prev_close * 0.98 and trap_info["fii_dii_signal"] == "Bullish":
+            if close < prev_close * 0.98 and trap_info["fii_dii_signal"] == "Bullish":
                 trap_info["trap_detected"] = True
                 trap_info["trap_type"] = "Bullish Trap"
                 trap_info["confidence"] = 0.8
                 trap_info["future_decision"] = "Wait / Hedge"
                 trap_info["stop_loss_support"] = round(float(rec.nifty_low) * 0.995, 2)
-            elif nifty_close > prev_close * 1.02 and trap_info["fii_dii_signal"] == "Bearish":
+            elif close > prev_close * 1.02 and trap_info["fii_dii_signal"] == "Bearish":
                 trap_info["trap_detected"] = True
                 trap_info["trap_type"] = "Bearish Trap"
                 trap_info["confidence"] = 0.8
                 trap_info["future_decision"] = "Wait / Hedge"
-                trap_info["stop_loss_resistance"] = round(float(rec.nifty_high) * 1.005, 2)
+                trap_info["stop_loss_resistance"] = round(float(rec.high) * 1.005, 2)
 
         # --- News Influence ---
         related_news_qs = MarketNews.objects.filter(

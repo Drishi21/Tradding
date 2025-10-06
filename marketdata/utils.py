@@ -146,10 +146,10 @@ def save_yearly_with_hourly(days=30):
             date=row["Date"].date(),
             hour=None,  # daily record
             defaults={
-                "nifty_open": float(row["Open"]),
-                "nifty_high": float(row["High"]),
+                "open": float(row["Open"]),
+                "high": float(row["High"]),
                 "nifty_low": float(row["Low"]),
-                "nifty_close": close,
+                "close": close,
                 "points": points,
             }
         )
@@ -162,10 +162,10 @@ def save_yearly_with_hourly(days=30):
             date=row["Datetime"].date(),
             hour=row["Datetime"].time().replace(minute=0, second=0, microsecond=0),
             defaults={
-                "nifty_open": float(row["Open"]),
-                "nifty_high": float(row["High"]),
+                "open": float(row["Open"]),
+                "high": float(row["High"]),
                 "nifty_low": float(row["Low"]),
-                "nifty_close": float(row["Close"]),
+                "close": float(row["Close"]),
                 "points": 0,
             }
         )

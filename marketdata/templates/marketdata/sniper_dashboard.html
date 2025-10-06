@@ -71,7 +71,7 @@
       {% for snap in snapshots %}
       <tr>
         <td>{{ snap.timestamp|date:"H:i" }}</td>
-        <td>{{ snap.nifty_close }}</td>
+        <td>{{ snap.close }}</td>
         <td>{{ snap.atm }}</td>
         <td style="color:green;">{{ snap.total_call_profit }}</td>
         <td style="color:red;">{{ snap.total_put_profit }}</td>

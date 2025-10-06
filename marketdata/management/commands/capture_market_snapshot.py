@@ -26,7 +26,7 @@ class Command(BaseCommand):
         # Determine ATM using rec or raw close from meta if available
         close_price = None
         if rec:
-            close_price = float(rec.nifty_close)
+            close_price = float(rec.close)
             atm = round(close_price / 50) * 50
             if close_price < atm:
                 atm -= 50
@@ -84,7 +84,7 @@ class Command(BaseCommand):
             timestamp=now,
             date=today,
             interval_minutes=20,
-            nifty_close=close_price,
+            close=close_price,
             atm=atm or 0,
             sniper=sniper.sniper if sniper else None,
             total_call_profit=total_call_profit,

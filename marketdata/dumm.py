@@ -204,10 +204,10 @@ def record_list(request):
                     pcr_val = existing.pcr if existing else 0
 
                 defaults = {
-                    "nifty_open": r["open"],
-                    "nifty_high": r["high"],
+                    "open": r["open"],
+                    "high": r["high"],
                     "nifty_low": r["low"],
-                    "nifty_close": r["close"],
+                    "close": r["close"],
                     "points": r["points"],
                     # FII/DII fields from the map (if present)
                     "fii_buy": fii_info.get("fii_buy", 0),
@@ -226,10 +226,10 @@ def record_list(request):
                 # intraday (hourly or 30m)
                 # copy FII/DII daily numbers into intraday rows (so UI can show them)
                 defaults = {
-                    "nifty_open": r["open"],
-                    "nifty_high": r["high"],
+                    "open": r["open"],
+                    "high": r["high"],
                     "nifty_low": r["low"],
-                    "nifty_close": r["close"],
+                    "close": r["close"],
                     "points": r["points"],
                     "fii_buy": fii_info.get("fii_buy", 0),
                     "fii_sell": fii_info.get("fii_sell", 0),
@@ -269,8 +269,8 @@ def record_list(request):
     # compute points for daily rows (based on previous trading day close)
     prev_close = None
     for rec in reversed(all_records):
-        rec.points = 0 if prev_close is None else round(float(rec.nifty_close) - float(prev_close), 2)
-        prev_close = rec.nifty_close
+        rec.points = 0 if prev_close is None else round(float(rec.close) - float(prev_close), 2)
+        prev_close = rec.close
 
     # paginate
     paginator = Paginator(all_records, 25)
@@ -286,8 +286,8 @@ def record_list(request):
         # calculate intraday points relative to previous intraday close (starting fresh each day)
         prev_intraday_close = None
         for it in intraday_qs:
-            it.points = 0 if prev_intraday_close is None else round(float(it.nifty_close) - float(prev_intraday_close), 2)
-            prev_intraday_close = it.nifty_close
+            it.points = 0 if prev_intraday_close is None else round(float(it.close) - float(prev_intraday_close), 2)
+            prev_intraday_close = it.close
             if it.hour and it.hour.minute == 0:
                 hourly.append(it)
             elif it.hour and it.hour.minute == 30:

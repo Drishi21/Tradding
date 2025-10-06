@@ -79,10 +79,10 @@
             {{ row.hour|time:"H:i" }}
           {% endif %}
         </td>
-        <td>{{ row.nifty_open }}</td>
-        <td>{{ row.nifty_high }}</td>
-        <td>{{ row.nifty_low }}</td>
-        <td>{{ row.nifty_close }}</td>
+        <td>{{ row.open }}</td>
+        <td>{{ row.high }}</td>
+        <td>{{ row.low }}</td>
+        <td>{{ row.close }}</td>
         <td class="{% if row.points >= 0 %}points-positive{% else %}points-negative{% endif %}">
           {% if row.points >= 0 %}+{% endif %}{{ row.points }}
         </td>

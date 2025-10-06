@@ -1,0 +1,12 @@
+<form method="get" class="filter-form">
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    {{ form.index }}
+    {{ form.interval }}
+    {{ form.momentum_bias }}
+    {{ form.date_from }}
+    {{ form.date_to }}
+    <button type="submit" class="btn btn-primary">🔍 Filter</button>
+    <a href="{% url 'option_reversal_list' %}" class="btn btn-secondary">Reset</a>
+  </div>
+</form>
+<hr>

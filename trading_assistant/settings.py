@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django_celery_results',
       "channels",
        "django_crontab",
+       "option_reversal",
 ]
 NEWS_API_KEY = "7cf51a5d2cc641429d3d9167e6bfc299"
 STATIC_URL = '/static/'

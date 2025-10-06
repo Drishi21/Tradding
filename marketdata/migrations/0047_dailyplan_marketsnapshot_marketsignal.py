@@ -35,7 +35,7 @@ class Migration(migrations.Migration):
                 ('timestamp', models.DateTimeField()),
                 ('date', models.DateField()),
                 ('interval_minutes', models.IntegerField(default=20)),
-                ('nifty_close', models.FloatField(blank=True, null=True)),
+                ('close', models.FloatField(blank=True, null=True)),
                 ('atm', models.IntegerField(blank=True, null=True)),
                 ('sniper', models.FloatField(blank=True, null=True)),
                 ('total_call_profit', models.FloatField(blank=True, null=True)),

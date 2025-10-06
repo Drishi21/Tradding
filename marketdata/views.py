@@ -129,9 +129,9 @@ def fetch_option_chain_for_strike(strike_price):
 
 def build_dynamic_trade_plan(record, option_lot_size=75):
     try:
-        atm = round(float(record.nifty_close) / 50) * 50
+        atm = round(float(record.close) / 50) * 50
     except Exception:
-        atm = round(float(record.nifty_close))
+        atm = round(float(record.close))
 
     opt = fetch_option_chain_for_strike(atm)
     bias = get_decision(record)
@@ -178,8 +178,8 @@ def recent_trend_warning(record, lookback=5):
     recs = MarketRecord.objects.filter(date__lt=record.date, interval="1d").order_by("-date")[:lookback]
     if not recs:
         return None
-    ups = sum(1 for r in recs if r.nifty_close > r.nifty_open)
-    downs = sum(1 for r in recs if r.nifty_close < r.nifty_open)
+    ups = sum(1 for r in recs if r.close > r.open)
+    downs = sum(1 for r in recs if r.close < r.open)
 
     if ups == lookback:
         return f"⚠️ Last {lookback} days UP → Avoid fresh Calls, market may correct."
@@ -208,7 +208,7 @@ def probability_score(record):
 
 def build_narrative(record, traps):
     try:
-        open_p, close_p = float(record.nifty_open), float(record.nifty_close)
+        open_p, close_p = float(record.open), float(record.close)
         story = []
         if open_p > close_p:
             story.append("📉 Market opened gap-down and weak.")
@@ -241,7 +241,7 @@ def generate_detailed_summary_json(record):
 
     lines = [
         f"📊 Market Recap {record.date.strftime('%d-%b-%Y')}",
-        f"- Nifty opened {record.nifty_open}, High {record.nifty_high}, Low {record.nifty_low}, Close {record.nifty_close}",
+        f"- Nifty opened {record.open}, High {record.high}, Low {record.nifty_low}, Close {record.close}",
     ]
     if prev and float(prev.fii_net) < -500:
         lines.append("📉 Yesterday’s heavy FII selling hurt sentiment.")
@@ -929,7 +929,7 @@ def accordion_view(request, rec_id, interval):
 def assign_action_simple(rec, sniper, side):
     """Assigns action using bias & sniper levels"""
     bias = get_decision(rec)
-    close = rec.nifty_close
+    close = rec.close
 
     if bias == "Bullish":
         if side == "CE":
@@ -1090,7 +1090,7 @@ def compute_and_store_sniper(record_date=None):
     if not rec:
         return None
 
-    close_price = float(rec.nifty_close)
+    close_price = float(rec.close)
     atm = round(close_price / 50) * 50
     if close_price < atm:
         atm -= 50
@@ -1189,7 +1189,7 @@ def assign_action(trade_side, sniper, rec, bias):
     """
     Decide actionable trade signal based on bias + sniper levels
     """
-    close = rec.nifty_close
+    close = rec.close
     action = "⚠ Wait / Neutral"
 
     if bias == "Bullish":
@@ -1526,7 +1526,7 @@ def market_monitor_api(request):
     payload = {
         "timestamp": snap.timestamp.isoformat(),
         "date": str(snap.date),
-        "nifty_close": snap.nifty_close,
+        "close": snap.close,
         "atm": snap.atm,
         "sniper": snap.sniper,
         "totals": {"call_sum": snap.total_call_profit, "put_sum": snap.total_put_profit},
@@ -1552,7 +1552,8 @@ from django.core.cache import cache
 from datetime import date, timedelta
 from .models import MarketRecord
 
-def record_list(request, index="NIFTY"):
+def record_list(request, index):
+    # MarketRecord.objects.all().delete()
     filter_option = request.GET.get("filter", "all")
     trend_filter = filter_option if filter_option in ["bullish", "bearish", "neutral"] else "all"
     page_number = request.GET.get("page", 1)
@@ -1867,7 +1868,7 @@ def calculate_impact(news_item):
             date=news_item.published_dt.date() + timedelta(days=1)
         ).first()
         if next_day:
-            base_summary += f" | Next day Nifty close: {next_day.nifty_close}"
+            base_summary += f" | Next day Nifty close: {next_day.close}"
     except Exception:
         pass
 
